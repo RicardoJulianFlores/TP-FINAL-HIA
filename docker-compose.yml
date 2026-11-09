@@ -1,0 +1,50 @@
+# Base de datos PostgreSQL + pgAdmin con volúmenes persistentes y red interna.
+# Uso:  cp .env.example .env  →  completar contraseñas  →  docker compose up -d
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: lumiere-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-trabajoFinal}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data              # volumen nombrado: sobrevive a "docker compose down"
+      - ./db/init:/docker-entrypoint-initdb.d:ro     # esquema inicial (solo si el volumen está vacío)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [db-net]
+    # SIN "ports": el motor no se publica ni en el host ni en la red pública.
+
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: lumiere-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?Defina PGADMIN_EMAIL en el archivo .env}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?Defina PGADMIN_PASSWORD en el archivo .env}
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"         # accesible solo desde esta máquina
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [db-net, admin-net]
+
+volumes:
+  pgdata:
+    name: lumiere_pgdata
+  pgadmin-data:
+    name: lumiere_pgadmin_data
+
+networks:
+  db-net:
+    internal: true       # red interna: sin acceso desde/hacia el exterior
+  admin-net: {}          # solo existe para poder publicar pgAdmin en 127.0.0.1
