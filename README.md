@@ -65,3 +65,16 @@ Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los sub
 - `db/init/` solo se ejecuta cuando el volumen está vacío. Si cambia el esquema, aplíquelo con SQL sobre la base o recree el volumen (`docker compose down -v`, **borra todos los datos**).
 - `docker compose down` conserva los datos; `docker compose down -v` los destruye.
 - Si ya tiene datos en una base local, puede cargarlos con `./scripts/restore.sh` a partir de un `pg_dump --clean --if-exists --no-owner` de esa base.
+
+---
+
+## Módulo de Gestión Operativa y Mesa de Ayuda (GLPI - JOY-20)
+
+Para la gestión de incidentes ITIL, categorización operativa y conexión con n8n/Prometheus, consultar la documentación detallada en [glpi/README.md](glpi/README.md):
+
+```bash
+cd glpi
+./setup.sh
+```
+- Acceso Web: http://localhost:8085 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
+- API REST: http://localhost:8085/apirest.php (App-Token configurado para n8n).
