@@ -1,0 +1,12 @@
+.producto-img {
+  height: 220px;
+  object-fit: cover;
+}
+
+.producto-card {
+  transition: transform 0.2s ease;
+}
+
+.producto-card:hover {
+  transform: translateY(-6px);
+}

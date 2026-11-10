@@ -1,0 +1,83 @@
+<div class="container-fluid py-4">
+    <!-- TARJETAS -->
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        Total de ventas
+                    </h6>
+                    <h2>
+                        ${{ totalVentas }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        Pedidos pendientes
+                    </h6>
+                    <h2>
+                        {{ pedidosPendientes }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        Productos sin stock
+                    </h6>
+                    <h2>
+                        {{ productosSinStock }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- GRAFICOS -->
+    <div class="row mt-5">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="mb-4">
+                        Ingresos por día
+                    </h5>
+                    <div class="line-chart">
+                        <canvas #lineChartCanvas></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="mb-4">
+                        Ventas por categoría
+                    </h5>
+                    <div class="doughnut-chart">
+                        <canvas #chartCanvas></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- BARRAS -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="mb-4">
+                        Productos más vendidos
+                    </h5>
+                    <div class="bar-chart">
+                        <canvas #barChartCanvas></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

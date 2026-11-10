@@ -1,0 +1,25 @@
+.estadistica{
+    transition:.3s;
+    cursor:pointer;
+}
+.estadistica:hover{
+    transform:translateY(-6px);
+    box-shadow:0 12px 25px rgba(0,0,0,.15);
+}
+.icono{
+    font-size:2rem;
+    color:#d4af37;
+}
+.card{
+    border-radius:15px;
+}
+.table th{
+    font-weight:600;
+}
+.badge{
+    font-size:.85rem;
+    padding:8px 12px;
+}
+.btn{
+    border-radius:10px;
+}

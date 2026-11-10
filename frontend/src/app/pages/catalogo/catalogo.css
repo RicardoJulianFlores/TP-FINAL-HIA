@@ -1,0 +1,19 @@
+.categoria-card {
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.categoria-img {
+  height: 280px;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.categoria-card:hover .categoria-img {
+  transform: scale(1.08);
+}
+
+.card-img-overlay {
+  background: linear-gradient(to top, rgba(0,0,0,0.7), transparent 60%);
+  padding: 1.25rem;
+}
