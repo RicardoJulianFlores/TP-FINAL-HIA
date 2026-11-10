@@ -7,7 +7,7 @@ Módulo de gestión de incidentes, mesa de ayuda y parametrización operativa IT
 El servicio está completamente aislado de la base de datos de negocio PostgreSQL (JOY-18 / JOY-19) para permitir despliegues modulares e independientes según los requerimientos de recursos de cada entorno.
 
 ```
-Host (Navegador / n8n) ──http://localhost:8085──► lumiere-glpi (GLPI 12.0)
+Host (Navegador / n8n) ──http://localhost:8086──► lumiere-glpi (GLPI 12.0)
                                                        │
                                             lumiere-ops-net
                                                        │
@@ -79,7 +79,7 @@ Si preferís realizar el despliegue de forma manual:
 
 ## Acceso Web y Credenciales
 
-- **URL de acceso**: [http://localhost:8085](http://localhost:8085)
+- **URL de acceso**: [http://localhost:8086](http://localhost:8086)
 - **Contraseña predeterminada para el equipo**: `Lumiere2026!`
 
 | Usuario | Nombre Completo | Perfil asignado |
@@ -105,7 +105,7 @@ Se crearon las categorías de asistencia en `glpi_itilcategories` orientadas a l
 
 La API REST se encuentra habilitada con autenticación por credenciales y App-Token:
 
-- **Endpoint base**: `http://localhost:8085/apirest.php`
+- **Endpoint base**: `http://localhost:8086/apirest.php`
 - **Cliente configurado**: `n8n-automation-client` (acceso permitido para cualquier IP del entorno Docker)
 - **App-Token**: `LumiereN8NAppToken2026SecureKeyJOY30`
 
@@ -115,7 +115,7 @@ La API REST se encuentra habilitada con autenticación por credenciales y App-To
 curl -X GET \
   -H "App-Token: LumiereN8NAppToken2026SecureKeyJOY30" \
   -u "mchambi:Lumiere2026!" \
-  http://localhost:8085/apirest.php/initSession
+  http://localhost:8086/apirest.php/initSession
 ```
 
 Respuesta esperada:

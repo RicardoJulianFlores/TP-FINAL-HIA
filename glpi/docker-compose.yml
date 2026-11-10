@@ -26,7 +26,7 @@ services:
     container_name: lumiere-glpi
     restart: unless-stopped
     ports:
-      - "${GLPI_PORT:-8085}:80"
+      - "${GLPI_PORT:-8086}:80"
     environment:
       TIMEZONE: ${TZ:-America/Argentina/Jujuy}
     volumes:

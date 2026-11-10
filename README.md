@@ -76,5 +76,5 @@ Para la gestión de incidentes ITIL, categorización operativa y conexión con n
 cd glpi
 ./setup.sh
 ```
-- Acceso Web: http://localhost:8085 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
-- API REST: http://localhost:8085/apirest.php (App-Token configurado para n8n).
+- Acceso Web: http://localhost:8086 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
+- API REST: http://localhost:8086/apirest.php (App-Token configurado para n8n).
