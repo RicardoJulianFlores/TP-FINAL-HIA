@@ -1,0 +1,18 @@
+<section class="container py-5 text-center">
+  <div *ngIf="procesando">
+    <span class="spinner-border me-2"></span>Confirmando tu pago...
+  </div>
+
+  <div *ngIf="!procesando">
+    <div *ngIf="resultado === 'success'" class="alert alert-success">
+      <i class="bi bi-check-circle-fill me-2"></i>¡Pago confirmado! Tu pedido fue registrado con éxito.
+    </div>
+    <div *ngIf="resultado === 'failure'" class="alert alert-danger">
+      <i class="bi bi-x-circle-fill me-2"></i>El pago no pudo procesarse.
+    </div>
+    <div *ngIf="resultado === 'pending'" class="alert alert-warning">
+      <i class="bi bi-hourglass-split me-2"></i>Tu pago está pendiente de confirmación.
+    </div>
+    <a routerLink="/catalogo" class="btn btn-warning fw-bold mt-3">Volver al catálogo</a>
+  </div>
+</section>

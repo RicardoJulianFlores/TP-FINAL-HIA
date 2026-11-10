@@ -1,0 +1,22 @@
+<div class="card p-4 shadow-sm text-center"> 
+  <h5 class="card-title mb-3">Iniciar Sesión con Google</h5> 
+ 
+  <div id="g_id_onload" 
+       data-client_id="318397519512-hhdp4n0l8inspbthr9m59fj92es3c8i9.apps.googleusercontent.com" 
+       data-context="signin" 
+       data-ux_mode="popup" 
+       data-callback="handleCredentialResponse" 
+       data-auto_prompt="false"> 
+  </div> 
+ 
+ <div class="g_id_signin d-flex justify-content-center mt-3"
+     data-type="standard"
+     data-shape="rectangular"
+     data-theme="outline"
+     data-text="signin_with"
+     data-size="large"
+     data-logo_alignment="left">
+ </div>
+
+<p *ngIf="mensajeError" class="text-danger small mt-2 mb-0">{{ mensajeError }}</p>
+</div> 

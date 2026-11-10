@@ -1,0 +1,19 @@
+.bg-dark{
+    background:#212529 !important;
+}
+
+.list-group-item{
+    border:none;
+    cursor:pointer;
+}
+
+.list-group-item:hover{
+    background:#d4af37;
+    color:white;
+}
+
+.active{
+    background:#d4af37 !important;
+    color:white !important;
+    font-weight:bold;
+}
