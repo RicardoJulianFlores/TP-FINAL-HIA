@@ -27,7 +27,7 @@ PostgreSQL 17 en red Docker interna, volumen nombrado, pgAdmin local y scripts d
 
 ```bash
 cp .env.example .env          # completar DB_PASSWORD y PGADMIN_PASSWORD
-docker compose up -d
+docker compose up -d --build  (levanta el proyecto buscando los dockerfile de las carpetas)
 docker compose ps             # db: healthy
 ```
 
