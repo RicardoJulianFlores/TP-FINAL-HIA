@@ -1,0 +1,49 @@
+name: lumiere-glpi-ops
+
+services:
+  glpi-db:
+    image: mariadb:10.11-jammy
+    container_name: lumiere-glpi-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      TZ: ${TZ:-America/Argentina/Jujuy}
+    volumes:
+      - lumiere_glpi_db_data:/var/lib/mysql
+    networks:
+      - lumiere-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  glpi:
+    image: diouxx/glpi:latest
+    container_name: lumiere-glpi
+    restart: unless-stopped
+    ports:
+      - "${GLPI_PORT:-8086}:80"
+    environment:
+      TIMEZONE: ${TZ:-America/Argentina/Jujuy}
+    volumes:
+      - lumiere_glpi_data:/var/www/html/glpi
+    depends_on:
+      glpi-db:
+        condition: service_healthy
+    networks:
+      - lumiere-net
+
+volumes:
+  lumiere_glpi_db_data:
+    name: lumiere_glpi_db_data
+  lumiere_glpi_data:
+    name: lumiere_glpi_data
+
+networks:
+  lumiere-net:
+    name: lumiere-ops-net
+    driver: bridge
