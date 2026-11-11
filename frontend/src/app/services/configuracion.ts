@@ -7,7 +7,7 @@ import { Configuracion } from '../models/configuracion';
   providedIn: 'root',
 })
 export class ConfiguracionService {
-  url = "http://localhost:3000/api/configuracion";
+  url = "/api/configuracion";
 
   constructor(private http: HttpClient) { }
 

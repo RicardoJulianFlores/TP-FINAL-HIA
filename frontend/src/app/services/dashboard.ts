@@ -32,7 +32,7 @@ export interface EstadisticasDashboard {
   providedIn: 'root'
 })
 export class ServicioDashboard {
-  private urlApi = 'http://localhost:3000/api/dashboard/stats';
+  private urlApi = '/api/dashboard/stats';
 
   obtenerEstadisticas(): Observable<EstadisticasDashboard> {
     return new Observable((observador) => {

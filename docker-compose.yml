@@ -2,6 +2,17 @@
 # Uso: cp .env.example .env -> completar datos -> docker compose up -d --build
 
 services:
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: joyeria-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      - frontend
+    networks:
+      - admin-net
+
   db:
     image: postgres:17-alpine
     container_name: lumiere-db

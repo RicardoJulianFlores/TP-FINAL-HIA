@@ -56,8 +56,8 @@ export class PagoService {
 
   pagos: Pago[] = [];
 
-  private apiUrl = 'http://localhost:3000/api/mp/payment';
-  private apiPagosUrl = 'http://localhost:3000/api/pagos';
+  private apiUrl = '/api/mp/payment';
+  private apiPagosUrl = '/api/pagos';
 
   constructor(private http: HttpClient) { }
 
