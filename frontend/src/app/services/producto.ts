@@ -9,7 +9,7 @@ import { Producto } from '../models/producto';
 })
 export class ProductoService {
 
-  private apiUrl = 'http://localhost:3000/api/productos';
+  private apiUrl = '/api/productos';
 
   private productosMock: Producto[] = [
     {

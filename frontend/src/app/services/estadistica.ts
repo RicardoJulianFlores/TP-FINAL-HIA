@@ -8,7 +8,7 @@ import { Observable } from 'rxjs';
 export class EstadisticaService {
   private http = inject(HttpClient);
 
-  private api = 'http://localhost:3000/api/estadisticas';
+  private api = '/api/estadisticas';
 
   getVentasPorCategoria(): Observable<any[]> {
     return this.http.get<any[]>(`${this.api}/grafico-categorias`);
