@@ -1,0 +1,56 @@
+<section class="nosotros-hero text-white text-center py-5">
+  <div class="container">
+    <h1 class="fw-bold display-5">Nosotros</h1>
+    <p class="lead">La historia detrás de cada pieza</p>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="row align-items-center g-5">
+    <div class="col-md-6">
+      <img src="https://images.unsplash.com/photo-1611955167811-4711904bb9f8?w=700"
+        alt="Taller de joyería" class="img-fluid rounded-4 shadow">
+    </div>
+    <div class="col-md-6">
+      <h2 class="fw-bold mb-3">Nuestra historia</h2>
+      <p class="text-secondary">
+        Joyería Lumière nació de la pasión por crear piezas que acompañen los momentos
+        más importantes de las personas. Comenzamos como un pequeño taller y hoy
+        seguimos eligiendo a mano cada material y cada diseño que forma parte de nuestra colección.
+      </p>
+      <p class="text-secondary">
+        Creemos en la joyería accesible sin resignar calidad: por eso trabajamos con
+        materiales duraderos, antialérgicos y de bajo mantenimiento.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="bg-light py-5">
+  <div class="container">
+    <h2 class="text-center fw-bold mb-5">Nuestros valores</h2>
+    <div class="row g-4">
+      <div class="col-md-4 text-center" *ngFor="let valor of valores">
+        <div class="valor-icono mb-3">
+          <i class="bi {{ valor.icono }}"></i>
+        </div>
+        <h5 class="fw-bold">{{ valor.titulo }}</h5>
+        <p class="text-secondary">{{ valor.texto }}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <h2 class="text-center fw-bold mb-2">Dónde encontrarnos</h2>
+  <p class="text-center text-secondary mb-4">
+    <i class="bi bi-geo-alt me-1"></i>San Salvador de Jujuy, Argentina
+  </p>
+  <app-google-map
+    [lat]="-24.184638606622784"
+    [lng]="-65.30430112056835"
+    [zoom]="16"
+    titulo="Joyería Lumière"
+    altura="400px">
+  </app-google-map>
+</section>

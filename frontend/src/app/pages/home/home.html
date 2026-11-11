@@ -1,0 +1,111 @@
+<section class="hero-section">
+  <div class="container text-center text-white py-5">
+    <h1 class="display-4 fw-bold">Joyería Lumière</h1>
+    <p class="lead">Piezas únicas que cuentan tu historia</p>
+    <a routerLink="/catalogo" class="btn btn-lg btn-warning fw-semibold mt-2">Ver Catálogo</a>
+  </div>
+</section>
+
+<section class="container my-5">
+  <h2 class="text-center fw-bold mb-4">Promociones</h2>
+
+  <div id="carouselPromos" class="carousel slide rounded-4 overflow-hidden shadow" data-bs-ride="carousel">
+    <div class="carousel-indicators">
+      <button type="button" data-bs-target="#carouselPromos" data-bs-slide-to="0" class="active" aria-label="Promo 1"></button>
+      <button type="button" data-bs-target="#carouselPromos" data-bs-slide-to="1" aria-label="Promo 2"></button>
+      <button type="button" data-bs-target="#carouselPromos" data-bs-slide-to="2" aria-label="Promo 3"></button>
+    </div>
+    <div class="carousel-inner">
+      <div class="carousel-item active">
+        <div class="carousel-slide promo-1 d-flex align-items-center justify-content-center text-white">
+          <div class="text-center px-3">
+            <h3 class="fw-bold">20% OFF en Collares</h3>
+            <p class="mb-3">Solo por esta semana en toda la línea de gargantillas</p>
+            <a routerLink="/catalogo/collares" class="btn btn-light fw-semibold">Ver Collares</a>
+          </div>
+        </div>
+      </div>
+      <div class="carousel-item">
+        <div class="carousel-slide promo-2 d-flex align-items-center justify-content-center text-white">
+          <div class="text-center px-3">
+            <h3 class="fw-bold">2x1 en Aretes Seleccionados</h3>
+            <p class="mb-3">Aprovechá antes de que se agoten</p>
+            <a routerLink="/catalogo/aretes" class="btn btn-light fw-semibold">Ver Aretes</a>
+          </div>
+        </div>
+      </div>
+      <div class="carousel-item">
+        <div class="carousel-slide promo-3 d-flex align-items-center justify-content-center text-white">
+          <div class="text-center px-3">
+            <h3 class="fw-bold">Envío gratis +$40.000</h3>
+            <p class="mb-3">En compras a todo el país</p>
+            <a routerLink="/catalogo" class="btn btn-light fw-semibold">Comprar ahora</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#carouselPromos" data-bs-slide="prev">
+      <span class="carousel-control-prev-icon"></span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#carouselPromos" data-bs-slide="next">
+      <span class="carousel-control-next-icon"></span>
+    </button>
+  </div>
+</section>
+
+<section class="container my-5">
+  <h2 class="text-center fw-bold mb-4">Ofertas Destacadas</h2>
+
+  <div *ngIf="cargando" class="text-center py-5">
+    <div class="spinner-border text-warning" role="status">
+      <span class="visually-hidden">Cargando...</span>
+    </div>
+  </div>
+
+  <div *ngIf="!cargando" class="row g-4">
+    <div class="col-12 col-sm-6 col-lg-3" *ngFor="let producto of destacados">
+      <div class="card h-100 shadow-sm border-0 producto-card position-relative">
+        <span *ngIf="producto.descuento" class="badge bg-danger position-absolute m-2">
+          -{{ producto.descuento }}%
+        </span>
+        <a [routerLink]="['/producto', producto.id]">
+          <img [src]="producto.imagen" [alt]="producto.nombre" class="card-img-top producto-img">
+        </a>
+        <div class="card-body d-flex flex-column">
+          <h6 class="card-title">
+            <a [routerLink]="['/producto', producto.id]" class="text-dark text-decoration-none">
+              {{ producto.nombre }}
+            </a>
+          </h6>
+          <p class="text-secondary small mb-2">{{ producto.material }}</p>
+          <div class="mt-auto">
+            <p class="mb-3">
+              <span *ngIf="producto.descuento" class="text-decoration-line-through text-secondary small me-2">
+                {{ producto.precio | precioDescuento }}
+              </span>
+              <span class="fw-bold text-dark fs-5">
+                {{ producto.precio | precioDescuento:(producto.descuento || 0) }}
+              </span>
+            </p>
+            <div class="d-flex gap-2">
+              <button
+                class="btn btn-dark flex-grow-1"
+                [disabled]="!producto.stock || agregadoId === producto.id"
+                (click)="agregarAlCarrito(producto)">
+                <span *ngIf="agregadoId !== producto.id">
+                  <i class="bi bi-cart-plus me-1"></i>Agregar
+                </span>
+                <span *ngIf="agregadoId === producto.id">
+                  <i class="bi bi-check-circle me-1"></i>¡Listo!
+                </span>
+              </button>
+              <a [routerLink]="['/producto', producto.id]" class="btn btn-outline-dark">
+                <i class="bi bi-eye"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

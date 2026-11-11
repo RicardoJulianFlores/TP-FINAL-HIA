@@ -1,0 +1,36 @@
+.card {
+    border: none;
+    border-radius: 15px;
+    overflow: hidden;
+}
+
+.card-header {
+    background-color: #fff;
+    font-weight: 600;
+    border-bottom: 1px solid #eee;
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.badge {
+    font-size: 0.85rem;
+    padding: 8px 12px;
+}
+
+.btn {
+    border-radius: 10px;
+}
+
+/* Tarjetas de estadísticas */
+.tarjeta {
+    height: 100%;
+    transition: transform .3s ease, box-shadow .3s ease;
+    cursor: pointer;
+}
+
+.tarjeta:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, .15);
+}

@@ -1,0 +1,155 @@
+<div class="container-fluid" *ngIf="loginApi.getPerfil()==='Administrador'">
+    <div class="mb-4">
+        <h2 class="fw-bold">
+            Sistema
+        </h2>
+        <p class="text-muted">
+            Bienvenido al panel de administración de <strong>Lumière</strong>.
+        </p>
+    </div>
+
+    <div *ngIf="cargando" class="text-muted">
+        Cargando datos del Sistema...
+    </div>
+
+    <div *ngIf="!cargando" class="row g-4">
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-people me-2"></i> Usuarios
+                    </h6>
+                    <h2 class="fw-bold">
+                        {{ datosSistema.usuarios }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-gem me-2"></i> Productos
+                    </h6>
+                    <h2 class="fw-bold">
+                        {{ datosSistema.productos }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-box-seam me-2"></i> Pedidos
+                    </h6>
+                    <h2 class="fw-bold">
+                        {{ datosSistema.pedidos }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-cash-coin me-2"></i> Ventas del mes
+                    </h6>
+                    <h2 class="fw-bold">
+                        ${{ datosSistema.ventasMes | number:'1.0-0' }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-envelope me-2"></i> Mensajes
+                    </h6>
+                    <h2 class="fw-bold">
+                        {{ datosSistema.mensajes }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4 col-md-6">
+            <div class="card shadow-sm border-0 tarjeta">
+                <div class="card-body">
+                    <h6 class="text-muted">
+                        <i class="bi bi-star me-2"></i> Clientes
+                    </h6>
+                    <h2 class="fw-bold">
+                        {{ datosSistema.clientes }}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-2">
+        <!-- Estado -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-activity me-2"></i>
+                    Estado de los Servicios
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Backend API</span>
+                        <span class="badge" [class]="getBadgeClass(datosSistema.estadoSistema.api)">
+                            {{ getEstadoTexto(datosSistema.estadoSistema.api) }}
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Base de Datos</span>
+                        <span class="badge" [class]="getBadgeClass(datosSistema.estadoSistema.baseDatos)">
+                            {{ getEstadoTexto(datosSistema.estadoSistema.baseDatos) }}
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span>Mercado Pago</span>
+                        <span class="badge" [class]="getBadgeClass(datosSistema.estadoSistema.mercadoPago)">
+                            {{ getEstadoTexto(datosSistema.estadoSistema.mercadoPago) }}
+                        </span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>EmailJS</span>
+                        <span class="badge" [class]="getBadgeClass(datosSistema.informacionSistema?.emailJs)">
+                            {{ datosSistema.informacionSistema?.emailJs ? 'Disponible' : 'No disponible' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Información -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    Información del Sistema
+                </div>
+
+                <div class="card-body">
+                    <p><strong>Versión:</strong> {{ cargando ? 'Cargando...' : datosSistema.informacionSistema?.version
+                        || 'N/D' }}</p>
+                    <p><strong>Framework:</strong> {{ cargando ? 'Cargando...' :
+                        datosSistema.informacionSistema?.framework || 'N/D' }}</p>
+                    <p><strong>Node:</strong> {{ cargando ? 'Cargando...' : datosSistema.informacionSistema?.nodeVersion
+                        || 'N/D' }}</p>
+                    <p><strong>Base de Datos:</strong> {{ cargando ? 'Cargando...' :
+                        datosSistema.informacionSistema?.baseDatos || 'N/D' }}</p>
+                    <p><strong>Última actualización:</strong> {{ cargando ? 'Cargando...' :
+                        datosSistema.informacionSistema?.ultimaActualizacion || 'N/D' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

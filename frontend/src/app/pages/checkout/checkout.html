@@ -1,0 +1,218 @@
+<section class="container py-5">
+  <h1 class="fw-bold mb-4"><i class="bi bi-lock-fill me-2"></i>Finalizar compra</h1>
+
+  <div *ngIf="error" class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-4">
+          <h5 class="fw-bold mb-4">Datos de entrega</h5>
+
+          <form [formGroup]="formulario" (ngSubmit)="onSubmit()" novalidate>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">Nombre</label>
+                <input type="text" class="form-control" formControlName="nombre"
+                  [class.is-invalid]="nombre?.invalid && nombre?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="nombre?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="nombre?.errors?.['minlength']">Mínimo 3 caracteres.</span>
+                </div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label">Apellido</label>
+                <input type="text" class="form-control" formControlName="apellido"
+                  [class.is-invalid]="apellido?.invalid && apellido?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="apellido?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="apellido?.errors?.['minlength']">Mínimo 2 caracteres.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" formControlName="email"
+                  [class.is-invalid]="email?.invalid && email?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="email?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="email?.errors?.['email']">Email inválido.</span>
+                </div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label">DNI</label>
+                <input type="text" class="form-control" formControlName="dni"
+                  placeholder="Ej: 30123456"
+                  [class.is-invalid]="dni?.invalid && dni?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="dni?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="dni?.errors?.['pattern']">Ingresá un DNI válido (7 a 9 dígitos).</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-4 mb-3">
+                <label class="form-label">Código de área</label>
+                <input type="text" class="form-control" formControlName="codigoArea"
+                  placeholder="Ej: 388"
+                  [class.is-invalid]="codigoArea?.invalid && codigoArea?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="codigoArea?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="codigoArea?.errors?.['pattern']">Solo números, 2 a 5 dígitos.</span>
+                </div>
+              </div>
+              <div class="col-md-8 mb-3">
+                <label class="form-label">Teléfono</label>
+                <input type="text" class="form-control" formControlName="telefono"
+                  placeholder="Ej: 4123456"
+                  [class.is-invalid]="telefono?.invalid && telefono?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="telefono?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="telefono?.errors?.['pattern']">Solo números, entre 6 y 15 dígitos.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-8 mb-3">
+                <label class="form-label">Calle</label>
+                <input type="text" class="form-control" formControlName="calle"
+                  placeholder="Ej: Av. Belgrano"
+                  [class.is-invalid]="calle?.invalid && calle?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="calle?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="calle?.errors?.['minlength']">Ingresá una calle válida.</span>
+                </div>
+              </div>
+              <div class="col-md-4 mb-3">
+                <label class="form-label">Número</label>
+                <input type="text" class="form-control" formControlName="numero"
+                  placeholder="Ej: 1234"
+                  [class.is-invalid]="numero?.invalid && numero?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="numero?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="numero?.errors?.['pattern']">Solo números.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-4 mb-3">
+                <label class="form-label">Código postal</label>
+                <input type="text" class="form-control" formControlName="codigoPostal"
+                  placeholder="Ej: 4600"
+                  [class.is-invalid]="codigoPostal?.invalid && codigoPostal?.touched">
+                <div class="invalid-feedback">
+                  <span *ngIf="codigoPostal?.errors?.['required']">Requerido.</span>
+                  <span *ngIf="codigoPostal?.errors?.['pattern']">Ingresá 4 dígitos.</span>
+                </div>
+              </div>
+              <div class="col-md-8 mb-3">
+                <label class="form-label">Ciudad</label>
+                <input type="text" class="form-control" formControlName="ciudad"
+                  [class.is-invalid]="ciudad?.invalid && ciudad?.touched">
+                <div class="invalid-feedback">Requerido.</div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label">Provincia</label>
+                <select class="form-select" formControlName="provincia"
+                  [class.is-invalid]="provincia?.invalid && provincia?.touched">
+                  <option value="" disabled selected>Seleccioná...</option>
+                  <option>Buenos Aires</option>
+                  <option>Catamarca</option>
+                  <option>Chaco</option>
+                  <option>Chubut</option>
+                  <option>Córdoba</option>
+                  <option>Corrientes</option>
+                  <option>Entre Ríos</option>
+                  <option>Formosa</option>
+                  <option>Jujuy</option>
+                  <option>La Pampa</option>
+                  <option>La Rioja</option>
+                  <option>Mendoza</option>
+                  <option>Misiones</option>
+                  <option>Neuquén</option>
+                  <option>Río Negro</option>
+                  <option>Salta</option>
+                  <option>San Juan</option>
+                  <option>San Luis</option>
+                  <option>Santa Cruz</option>
+                  <option>Santa Fe</option>
+                  <option>Santiago del Estero</option>
+                  <option>Tierra del Fuego</option>
+                  <option>Tucumán</option>
+                </select>
+                <div class="invalid-feedback">Requerido.</div>
+              </div>
+            </div>
+
+            <div class="alert alert-light border mt-2">
+              <i class="bi bi-info-circle me-2 text-primary"></i>
+              Al confirmar serás redirigido a <strong>MercadoPago</strong> para completar el pago de forma segura.
+            </div>
+
+            <button type="submit" class="btn btn-warning btn-lg w-100 fw-bold mt-2" [disabled]="procesando">
+              <span *ngIf="!procesando">
+                <i class="bi bi-credit-card me-2"></i>Pagar con MercadoPago — {{ total | precioDescuento }}
+              </span>
+              <span *ngIf="procesando">
+                <span class="spinner-border spinner-border-sm me-2"></span>Procesando...
+              </span>
+            </button>
+
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body p-4">
+          <h6 class="fw-bold mb-3">Resumen de tu pedido</h6>
+          <div *ngFor="let item of items" class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex align-items-center gap-2">
+              <img [src]="item.producto.imagen" [alt]="item.producto.nombre"
+                class="rounded" style="width:42px; height:42px; object-fit:cover;">
+              <div>
+                <p class="mb-0 small fw-semibold">{{ item.producto.nombre }}</p>
+                <small class="text-secondary">x{{ item.cantidad }}</small>
+              </div>
+            </div>
+            <span class="small fw-bold">
+              {{ item.producto.precio | precioDescuento:(item.producto.descuento || 0) }}
+            </span>
+          </div>
+
+          <hr>
+
+          <div class="d-flex justify-content-between mb-1">
+            <span class="text-secondary small">Subtotal</span>
+            <span class="small">{{ subtotal | precioDescuento }}</span>
+          </div>
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-secondary small">Envío</span>
+            <span class="small" *ngIf="envio > 0">{{ envio | precioDescuento }}</span>
+            <span class="small text-success fw-semibold" *ngIf="envio === 0">Gratis</span>
+          </div>
+          <div class="d-flex justify-content-between fw-bold">
+            <span>Total</span>
+            <span>{{ total | precioDescuento }}</span>
+          </div>
+        </div>
+      </div>
+
+      <a routerLink="/carrito" class="btn btn-outline-dark w-100">
+        <i class="bi bi-arrow-left me-2"></i>Editar carrito
+      </a>
+    </div>
+  </div>
+</section>

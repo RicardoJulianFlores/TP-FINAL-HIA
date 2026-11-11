@@ -1,0 +1,32 @@
+.hero-section {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.carousel-slide {
+  height: 320px;
+}
+
+.promo-1 {
+  background: linear-gradient(135deg, #6a1b1b, #b08d57);
+}
+
+.promo-2 {
+  background: linear-gradient(135deg, #2c2c54, #474787);
+}
+
+.promo-3 {
+  background: linear-gradient(135deg, #1b4332, #52796f);
+}
+
+.producto-img {
+  height: 220px;
+  object-fit: cover;
+}
+
+.producto-card {
+  transition: transform 0.2s ease;
+}
+
+.producto-card:hover {
+  transform: translateY(-6px);
+}

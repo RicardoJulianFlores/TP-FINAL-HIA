@@ -1,0 +1,23 @@
+.card{
+    border: none;
+    border-radius: 15px;
+}
+
+.card-header{
+    background: white;
+    font-weight: 600;
+}
+
+.btn-warning{
+    background: #d4af37;
+    border: none;
+    color: white;
+}
+
+.btn-warning:hover{
+    background: #b8942f;
+}
+
+.form-check{
+    margin-bottom: .75rem;
+}

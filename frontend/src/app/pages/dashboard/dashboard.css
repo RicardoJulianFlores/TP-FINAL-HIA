@@ -1,0 +1,23 @@
+.line-chart{
+    height: 350px;
+    position: relative;
+}
+
+.doughnut-chart{
+    height: 350px;
+    position: relative;
+}
+
+.bar-chart{
+    height: 350px;
+    position: relative;
+}
+
+.card{
+    border: none;
+    border-radius: 15px;
+}
+
+.card-body h2{
+    font-weight: bold;
+}
