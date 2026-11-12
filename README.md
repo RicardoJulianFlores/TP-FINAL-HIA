@@ -108,3 +108,77 @@ Si la aplicación no responde y el pipeline tarda demasiado en compilar:
    docker logs app-prod > error_logs_$(date +%F).log
 2. Analizar el log en búsqueda de dependencias faltantes, errores de migración de base de datos o fallos de variables de entorno.
 3. Incorporar una nueva prueba unitaria o de integración en el pipeline que replique la falla para prevenir su reaparición futura.
+
+
+---
+
+## Clúster de Base de Datos: Topología Maestro-Esclavo (Primario + Réplica)
+
+Se configuró una arquitectura de alta disponibilidad y segregación de lectura/escritura mediante **Streaming Replication** física nativa de PostgreSQL 17:
+- **Nodo Primario (`lumiere-db`):** Responsable de las transacciones de escritura (`INSERT`, `UPDATE`, `DELETE`, DDL). Genera los registros WAL (*Write-Ahead Logging*) y los transmite mediante un replication slot (`replica_slot`).
+- **Nodo Réplica (`lumiere-db-replica`):** Servidor en modo *Hot Standby* de solo lectura. Clona el estado inicial del primario vía `pg_basebackup` y se mantiene sincronizado en tiempo real.
+- **Backend (Express + Sequelize):** Pool de conexiones dual (`replication: { write: ..., read: [...] }`). Las consultas de lectura se derivan automáticamente a la réplica y las escrituras al nodo primario.
+- **Endpoint de Monitoreo:** `GET /api/health` reporta el estado y conectividad de ambos nodos del clúster.
+
+### Diagrama de Red y Topología del Clúster
+
+```mermaid
+flowchart TD
+    subgraph Host["Host Machine"]
+        Client["Navegador / Cliente API"]
+    end
+
+    subgraph AdminNet["Docker Network: admin-net (Bridge)"]
+        Frontend["Frontend: joyeria-frontend (Port 8080:80)"]
+        Backend["Backend API: joyeria-backend (Port 3000:3000)"]
+        PgAdmin["pgAdmin 4: lumiere-pgadmin (Port 127.0.0.1:5050:80)"]
+        Tunnel["Cloudflare Tunnel: joyeria-tunnel"]
+    end
+
+    subgraph DbNet["Docker Network: db-net (internal: true)"]
+        Primary["DB Primario: lumiere-db (5432/tcp) - ESCRITURA"]
+        Replica["DB Réplica: lumiere-db-replica (5432/tcp) - LECTURA"]
+        VolPrimary[("Volumen: lumiere_pgdata")]
+        VolReplica[("Volumen: lumiere_pgdata_replica")]
+    end
+
+    Client -->|HTTP 8080| Frontend
+    Client -->|HTTP 3000| Backend
+    Client -->|HTTP 5050| PgAdmin
+
+    Frontend -->|HTTP /api| Backend
+    Tunnel --> Frontend
+
+    Backend -->|Sequelize Write / DDL: 5432| Primary
+    Backend -->|Sequelize Read: 5432| Replica
+
+    PgAdmin -->|Admin: 5432| Primary
+    PgAdmin -->|Admin: 5432| Replica
+
+    Primary -.->|Streaming Replication WAL / 5432 (Slot: replica_slot)| Replica
+    Primary --- VolPrimary
+    Replica --- VolReplica
+```
+
+### Matriz de Puertos y Servicios
+
+| Servicio | Contenedor | Redes | Puerto Interno | Puerto Host / Exposición | Rol |
+|---|---|---|---|---|---|
+| `db` | `lumiere-db` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Primario (Escritura y WAL streaming) |
+| `db-replica` | `lumiere-db-replica` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica (Hot Standby - Solo Lectura) |
+| `pgadmin` | `lumiere-pgadmin` | `db-net`, `admin-net` | 80/tcp | `127.0.0.1:5050` | Administrador visual de ambos nodos |
+| `backend` | `joyeria-backend` | `db-net`, `admin-net` | 3000/tcp | `0.0.0.0:3000` | API REST con dual-pool Sequelize |
+| `frontend` | `joyeria-frontend` | `admin-net` | 80/tcp | `0.0.0.0:8080` | SPA Angular + Nginx |
+
+### Script de Verificación Automática de Replicación
+
+Para validar la sincronización automática y la restricción de solo lectura:
+```bash
+chmod +x scripts/verificar-replicacion.sh
+./scripts/verificar-replicacion.sh
+```
+El script comprueba:
+1. Roles `pg_is_in_recovery()` (`f` para primario, `t` para réplica).
+2. Estado del canal WAL (`pg_stat_replication` y `pg_stat_wal_receiver`).
+3. Inserción de un registro en el primario y verificación de su lectura inmediata en la réplica.
+4. Rechazo de transacciones de escritura directa en la réplica (`read-only transaction`).
