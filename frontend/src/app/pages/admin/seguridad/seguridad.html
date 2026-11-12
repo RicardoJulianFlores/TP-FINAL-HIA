@@ -1,0 +1,129 @@
+<div class="container-fluid" *ngIf="loginApi.getPerfil()==='Administrador'">
+    <div class="mb-4">
+        <h2 class="fw-bold">
+            <i class="bi bi-shield-lock-fill me-2"></i>
+            Configuración de Seguridad
+        </h2>
+        <p class="text-muted">
+            Administra las políticas de seguridad del sistema.
+        </p>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-key-fill me-2"></i>
+                    Política de Contraseñas
+                </div>
+                <div class="card-body">
+                    <label class="form-label">Longitud mínima</label>
+                    <select class="form-select mb-3" [(ngModel)]="configuracion.longitudMinima" name="longitudMinima">
+                        <option [ngValue]="8">8 caracteres</option>
+                        <option [ngValue]="10">10 caracteres</option>
+                        <option [ngValue]="12">12 caracteres</option>
+                    </select>
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.requiereMayusculas" name="requiereMayusculas">
+                        <label class="form-check-label">Requerir mayúsculas</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.requiereNumeros" name="requiereNumeros">
+                        <label class="form-check-label">Requerir números</label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.requiereEspeciales" name="requiereEspeciales">
+                        <label class="form-check-label">Requerir caracteres especiales</label>
+                    </div>
+
+                    <button class="btn btn-warning" type="button" (click)="guardarConfiguracion()" [disabled]="cargando">
+                        <i class="bi bi-floppy-fill me-2"></i>
+                        Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-lock-fill me-2"></i>
+                    Protección de Acceso
+                </div>
+                <div class="card-body">
+                    <label class="form-label">Intentos permitidos</label>
+                    <input type="number" class="form-control mb-3" [(ngModel)]="configuracion.intentosPermitidos" name="intentosPermitidos">
+
+                    <label class="form-label">Tiempo de bloqueo (minutos)</label>
+                    <input type="number" class="form-control mb-3" [(ngModel)]="configuracion.tiempoBloqueoMinutos" name="tiempoBloqueoMinutos">
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.bloquearAutomaticamente" name="bloquearAutomaticamente">
+                        <label class="form-check-label">Bloquear usuario automáticamente</label>
+                    </div>
+
+                    <button class="btn btn-warning" type="button" (click)="guardarConfiguracion()" [disabled]="cargando">
+                        <i class="bi bi-floppy-fill me-2"></i>
+                        Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-person-badge-fill me-2"></i>
+                    Gestión de Sesiones
+                </div>
+                <div class="card-body">
+                    <label class="form-label">Tiempo máximo de inactividad</label>
+                    <input type="number" class="form-control mb-3" [(ngModel)]="configuracion.tiempoInactividadMinutos" name="tiempoInactividadMinutos">
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.cerrarSesionAutomaticamente" name="cerrarSesionAutomaticamente">
+                        <label class="form-check-label">Cerrar sesión automáticamente</label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.permitirMultiplesSesiones" name="permitirMultiplesSesiones">
+                        <label class="form-check-label">Permitir múltiples sesiones</label>
+                    </div>
+
+                    <button class="btn btn-warning" type="button" (click)="guardarConfiguracion()" [disabled]="cargando">
+                        <i class="bi bi-floppy-fill me-2"></i>
+                        Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header">
+                    <i class="bi bi-fingerprint me-2"></i>
+                    Autenticación
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.autenticacionPassword" name="autenticacionPassword">
+                        <label class="form-check-label">Usuario y contraseña</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.autenticacion2FA" name="autenticacion2FA">
+                        <label class="form-check-label">Autenticación en dos pasos (2FA)</label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" [(ngModel)]="configuracion.loginGoogle" name="loginGoogle">
+                        <label class="form-check-label">Inicio de sesión con Google</label>
+                    </div>
+
+                    <button class="btn btn-warning" type="button" (click)="guardarConfiguracion()" [disabled]="cargando">
+                        <i class="bi bi-floppy-fill me-2"></i>
+                        Guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,23 @@
+<div class="container-fluid">
+  <div class="row">
+    <!-- Sidebar -->
+    <div class="col-md-2 p-0">
+      <app-sidebar-admin></app-sidebar-admin>
+    </div>
+    <!-- Contenido -->
+    <div class="col-md-10">
+      <!-- Barra superior -->
+      <div class="bg-light border-bottom p-3 d-flex justify-content-between align-items-center">
+        <h4 class="mb-0">
+          Panel de Administración
+        </h4>
+        <div>
+          Bienvenido Administrador
+        </div>
+      </div>
+      <div class="p-4">
+        <router-outlet></router-outlet>
+      </div>
+    </div>
+  </div>
+</div>

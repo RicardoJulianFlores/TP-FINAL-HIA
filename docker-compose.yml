@@ -1,7 +1,18 @@
-# Base de datos PostgreSQL + pgAdmin con volúmenes persistentes y red interna.
-# Uso:  cp .env.example .env  →  completar contraseñas  →  docker compose up -d
+# Sistema completo Joyería Lumière: BD, pgAdmin, Backend (Express) y Frontend (Angular + Nginx)
+# Uso: cp .env.example .env -> completar datos -> docker compose up -d --build
 
 services:
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: joyeria-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      - frontend
+    networks:
+      - admin-net
+
   db:
     image: postgres:17-alpine
     container_name: lumiere-db
@@ -11,15 +22,15 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
     volumes:
-      - pgdata:/var/lib/postgresql/data              # volumen nombrado: sobrevive a "docker compose down"
-      - ./db/init:/docker-entrypoint-initdb.d:ro     # esquema inicial (solo si el volumen está vacío)
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [db-net]
-    # SIN "ports": el motor no se publica ni en el host ni en la red pública.
+    networks:
+      - db-net
 
   pgadmin:
     image: dpage/pgadmin4:9
@@ -32,11 +43,50 @@ services:
       - pgadmin-data:/var/lib/pgadmin
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
     ports:
-      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"         # accesible solo desde esta máquina
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
     depends_on:
       db:
         condition: service_healthy
-    networks: [db-net, admin-net]
+    networks:
+      - db-net
+      - admin-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: joyeria-backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-trabajoFinal}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+      JWT_SECRET: ${JWT_SECRET:-secretkey}
+      ACCESS_TOKEN: ${ACCESS_TOKEN:-APP_USR-1197074938502805-070311-2b5184f280c83c5f7022740503588a04-3517051204}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - db-net
+      - admin-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: joyeria-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - admin-net
 
 volumes:
   pgdata:
@@ -46,5 +96,5 @@ volumes:
 
 networks:
   db-net:
-    internal: true       # red interna: sin acceso desde/hacia el exterior
-  admin-net: {}          # solo existe para poder publicar pgAdmin en 127.0.0.1
+    internal: true       # Aislada: solo tráfico interno entre DB, Backend y pgAdmin
+  admin-net: {}          # Puente: permite exponer puertos 8080, 3000 y 5050 hacia el host

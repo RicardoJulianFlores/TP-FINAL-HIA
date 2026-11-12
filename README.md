@@ -27,7 +27,7 @@ PostgreSQL 17 en red Docker interna, volumen nombrado, pgAdmin local y scripts d
 
 ```bash
 cp .env.example .env          # completar DB_PASSWORD y PGADMIN_PASSWORD
-docker compose up -d
+docker compose up -d --build  (levanta el proyecto buscando los dockerfile de las carpetas)
 docker compose ps             # db: healthy
 ```
 
@@ -66,6 +66,18 @@ Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los sub
 - `docker compose down` conserva los datos; `docker compose down -v` los destruye.
 - Si ya tiene datos en una base local, puede cargarlos con `./scripts/restore.sh` a partir de un `pg_dump --clean --if-exists --no-owner` de esa base.
 
+---
+
+## Módulo de Gestión Operativa y Mesa de Ayuda (GLPI - JOY-20)
+
+Para la gestión de incidentes ITIL, categorización operativa y conexión con n8n/Prometheus, consultar la documentación detallada en [glpi/README.md](glpi/README.md):
+
+```bash
+cd glpi
+./setup.sh
+```
+- Acceso Web: http://localhost:8086 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
+- API REST: http://localhost:8086/apirest.php (App-Token configurado para n8n).
 # Procedimiento Operativo Estándar: Rollback y Recuperación ante Fallos
 
 ## 1. Detección del Incidente

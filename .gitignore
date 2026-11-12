@@ -1,3 +1,5 @@
 .env
+glpi/.env
 backups/*.sql
 backups/backup.log
+
