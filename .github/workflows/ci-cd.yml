@@ -12,6 +12,14 @@ jobs:
       - name: Checkout del código
         uses: actions/checkout@v3
 
+      - name: Crear archivo .env temporal
+        run: |
+          cat << EOF > .env
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}
+          PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}
+          EOF
+
       - name: Validar sintaxis del docker-compose
         run: docker-compose config -q
 
