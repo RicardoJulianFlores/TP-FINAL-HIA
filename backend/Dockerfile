@@ -1,7 +1,7 @@
 # ==========================================
 # ETAPA 1: Dependencias y Preparación
 # ==========================================
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,10 @@ COPY . .
 # ==========================================
 # ETAPA 2: Runtime de Producción Ligero
 # ==========================================
-FROM node:18-alpine AS runner
+FROM node:22-alpine AS runner
+
+# Parchear paquetes base del SO (Alpine) contra CVEs críticos/altos
+RUN apk update && apk upgrade --no-cache
 
 WORKDIR /app
 
