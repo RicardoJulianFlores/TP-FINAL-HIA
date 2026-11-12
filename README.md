@@ -65,3 +65,34 @@ Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los sub
 - `db/init/` solo se ejecuta cuando el volumen está vacío. Si cambia el esquema, aplíquelo con SQL sobre la base o recree el volumen (`docker compose down -v`, **borra todos los datos**).
 - `docker compose down` conserva los datos; `docker compose down -v` los destruye.
 - Si ya tiene datos en una base local, puede cargarlos con `./scripts/restore.sh` a partir de un `pg_dump --clean --if-exists --no-owner` de esa base.
+
+# Procedimiento Operativo Estándar: Rollback y Recuperación ante Fallos
+
+## 1. Detección del Incidente
+Un fallo en producción se considera crítico si:
+- Las pruebas de salud (Healthchecks) responden con códigos de estado HTTP 5xx.
+- Ocurren excepciones no controladas en los logs del servidor post-despliegue.
+
+## 2. Mecanismos de Reversión
+
+### Opción A: Rollback mediante Reversión en Git (Método Automatizado Preferido)
+1. Identificar el commit estable anterior en la rama `main`.
+2. Crear un commit de reversión local y enviarlo al repositorio:
+   git revert HEAD --no-edit
+   git push origin main
+3. GitHub Actions ejecutará automáticamente el pipeline completo, construyendo y desplegando la versión previa garantizada.
+
+### Opción B: Rollback Inmediato en Servidor por SHA (Método de Emergencia < 2 Minutos)
+Si la aplicación no responde y el pipeline tarda demasiado en compilar:
+1. Conectarse al servidor vía SSH.
+2. Identificar el SHA del commit estable anterior en el registro de contenedores (GHCR).
+3. Reemplazar el contenedor en producción ejecutando:
+   docker stop app-prod
+   docker rm app-prod
+   docker run -d --name app-prod -p 80:3000 --restart always ghcr.io/tu-usuario/tu-repo:<COMMIT_SHA_ANTERIOR>
+
+## 3. Post-Mortem y Análisis de Fallo
+1. Extraer los registros del contenedor fallido antes de su destrucción:
+   docker logs app-prod > error_logs_$(date +%F).log
+2. Analizar el log en búsqueda de dependencias faltantes, errores de migración de base de datos o fallos de variables de entorno.
+3. Incorporar una nueva prueba unitaria o de integración en el pipeline que replique la falla para prevenir su reaparición futura.
