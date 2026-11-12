@@ -25,13 +25,14 @@ jobs:
     needs: test-and-lint
     runs-on: self-hosted
     steps:
+      - name: Checkout del código
+        uses: actions/checkout@v3
+
       - name: Crear archivo .env
         run: |
           Set-Content -Path .env -Value "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
           Add-Content -Path .env -Value "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
           Add-Content -Path .env -Value "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
-      - name: Checkout del código
-        uses: actions/checkout@v3
 
       - name: Desplegar en la máquina local
         run: |
