@@ -3,6 +3,82 @@
 
 services:
 
+  # --- SPRINT 3: Observabilidad (Prometheus + Grafana + Métricas Docker) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lumiere-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - admin-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lumiere-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - admin-net
+
+  # --- SPRINT 3: Automatización (n8n) ---
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: lumiere-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - GENERIC_TIMEZONE=America/Argentina/Jujuy
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - admin-net
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: lumiere-cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - admin-net
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: lumiere-node-exporter
+    restart: unless-stopped
+    networks:
+      - admin-net
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: lumiere-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}@db:5432/${DB_NAME:-trabajoFinal}?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - db-net
+      - admin-net
+
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: joyeria-tunnel
@@ -93,6 +169,10 @@ volumes:
     name: lumiere_pgdata
   pgadmin-data:
     name: lumiere_pgadmin_data
+  n8n_data:
+    name: lumiere_n8n_data
+  grafana_data:
+    name: lumiere_grafana_data
 
 networks:
   db-net:
