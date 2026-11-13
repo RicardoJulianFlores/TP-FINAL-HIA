@@ -47,11 +47,12 @@ const doc = {
         },
 
         Usuario: {
-            username: 'juanperez',
-            password: '123456',
+            username: 'admin',
+            password: 'admin',
             nombres: 'Juan',
+            email: 'juan@gmail.com',
             apellido: 'Pérez',
-            perfil: 'administrador'
+            perfil: 'Administrador'
         },
 
         Login: {
