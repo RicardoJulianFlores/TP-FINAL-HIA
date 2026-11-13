@@ -1,0 +1,118 @@
+======================================================================
+    JOYERÍA LUMIÈRE - SIMULACIÓN DE FALLO CONTROLADO (FAILOVER) BD    
+======================================================================
+Fecha de inicio: 2026-11-13 00:27:56 UTC
+
+=== FASE 1: Verificación de Pre-condiciones y Topología Base ===
+✓ Roles confirmados: Primario (pg_is_in_recovery=f) | Réplica (pg_is_in_recovery=t)
+✓ WAL LSN Primario: 0/E0005F8 | WAL LSN Réplica: 0/E0005F8
+✓ Replication Lag de línea base: 0 bytes (RPO teórico: 0 segundos)
+Insertando registro canario pre-fallo en el Primario (CANARY_PRE_FAILOVER_1794529677)...
+✓ Registro canario sincronizado exitosamente en la Réplica antes de la caída.
+
+=== FASE 2: Inyección de Falla (Caída Abrupta del Primario) ===
+Timestamp de caída (T0): 2026-11-13 00:27:58 UTC [Epoch ms: 1794529678657]
+Deteniendo contenedor lumiere-db (docker stop)...
+ Container lumiere-db Stopping 
+ Container lumiere-db Stopped 
+✓ Nodo primario detenido forzadamente.
+
+=== FASE 3: Comprobación del Comportamiento del Backend en Modo Degradado ===
+1. Evaluando lecturas (GET /api/productos/destacados)...
+✓ LECTURAS OPERATIVAS: HTTP 200 en 0.006296s (Servidas por lumiere-db-replica).
+2. Evaluando escrituras (POST /api/contactos)...
+Respuesta de escritura: HTTP 400 en 0.090775s | Cuerpo: {"status":"0","msg":"Error procesando operacion."}
+✓ ESCRITURAS RECHAZADAS CORRECTAMENTE: Se evitó corrupción y split-brain mientras el nodo primario estaba inactivo.
+3. Evaluando endpoint de monitoreo (GET /api/health)...
+JSON /api/health: {"uptime":30.007717174,"timestamp":"2026-11-13T00:28:07.875Z","cluster":{"topology":"replication","primary":{"status":"down","host":"db","error":"getaddrinfo ENOTFOUND db"},"replica":{"status":"healthy","host":"db-replica"}},"status":"degraded_read_only"}
+
+=== FASE 4: Procedimiento de Promoción de la Réplica (Failover) ===
+Ejecutando promoción asistida mediante ./scripts/promover-replica.sh...
+=== 1. Comprobando rol actual del nodo réplica ===
+Nodo réplica en modo Standby confirmado (pg_is_in_recovery = true).
+=== 2. Ejecutando pg_promote() en lumiere-db-replica ===
+OK: pg_promote() retornó éxito (t).
+OK: Nodo réplica promovido exitosamente a PRIMARIO (pg_is_in_recovery = false).
+=== 3. Redirigiendo tráfico de red (alias 'db' y 'db-primary' hacia la réplica promovida) ===
+Red detectada: tp-final-hia_db-net
+OK: Alias 'db' y 'db-primary' asignados a lumiere-db-replica en tp-final-hia_db-net.
+=== 4. Verificando conectividad y salud del Backend ===
+Respuesta de /api/health: {"uptime":49.746344661,"timestamp":"2026-11-13T00:28:27.613Z","cluster":{"topology":"replication","primary":{"status":"healthy","host":"db"},"replica":{"status":"healthy","host":"db-replica"}},"status":"healthy"}
+=== PROCESO DE PROMOCIÓN COMPLETADO EXITOSAMENTE ===
+✓ Tiempo neto de ejecución de pg_promote y reasignación de red: 19.704s
+
+=== FASE 5: Verificación de Recuperación Total y Operaciones Post-Failover ===
+1. Probando escritura sobre el nuevo primario (POST /api/contactos con CANARY_POST_FAILOVER_1794529677)...
+✓ ESCRITURA RESTABLECIDA: HTTP 200 en 0.143075s.
+2. Probando lectura sobre el nuevo primario...
+✓ LECTURAS POST-PROMOCIÓN: HTTP 200.
+3. Evaluando endpoint /api/health post-failover...
+JSON /api/health: {"uptime":49.99785244,"timestamp":"2026-11-13T00:28:27.865Z","cluster":{"topology":"replication","primary":{"status":"healthy","host":"db"},"replica":{"status":"healthy","host":"db-replica"}},"status":"healthy"}
+
+=== FASE 6: Verificación de Consistencia e Integridad de Datos (RPO) ===
+Verificando persistencia del registro canario PRE-FALLO (CANARY_PRE_FAILOVER_1794529677) en el nuevo primario...
+✓ CONSISTENCIA TOTAL: Tanto el registro canario pre-caída (1) como el post-failover (1) existen sin pérdidas.
+
+======================================================================
+                   INFORME DE MÉTRICAS DE FAILOVER                    
+======================================================================
+Fecha y Hora de la Prueba           : 2026-11-13 00:28:28 UTC
+RTO (Recovery Time Objective)       : 29 segundos
+RPO (Recovery Point Objective)      : 0 transacciones / 0 bytes (Consistencia Total - RPO = 0s)
+Disponibilidad de Lectura (Degradado) : 100% OPERATIVO (HTTP 200 en 0.006296s)
+Comportamiento de Escritura (Caída) : RECHAZO INMEDIATO (HTTP 400 - Preserva Consistencia)
+Mecanismo de Promoción             : SELECT pg_promote() [PostgreSQL 17 Native]
+Nuevo Nodo Primario Activo          : lumiere-db-replica (pg_is_in_recovery=f)
+Archivo de Evidencia Generado       : docs/failover-evidence/resultado-failover-20261112_212756.txt
+======================================================================
+
+=== Opciones seleccionadas: Restaurando clúster a topología base automáticamente ===
+=== 1. Asegurando que el nodo primario original (lumiere-db) esté iniciado ===
+ Container lumiere-db Starting 
+ Container lumiere-db Started 
+Esperando a que lumiere-db esté listo y saludable...
+OK: lumiere-db saludable.
+=== 2. Restaurando alias de red originales ===
+OK: Alias restaurados (db -> lumiere-db, db-replica -> lumiere-db-replica).
+=== 3. Comprobando estado de recuperación de lumiere-db-replica ===
+El nodo réplica se encontraba promovido o desconectado. Resincronizando réplica desde el primario...
+DO
+ Container lumiere-db-replica Stopping 
+ Container lumiere-db-replica Stopped 
+Going to remove lumiere-db-replica
+ Container lumiere-db-replica Removing 
+ Container lumiere-db-replica Removed 
+lumiere_pgdata_replica
+ Volume lumiere_pgdata_replica Creating 
+ Volume lumiere_pgdata_replica Created 
+ Container lumiere-db Running 
+ Container lumiere-db-replica Creating 
+ Container lumiere-db-replica Created 
+ Container lumiere-db Waiting 
+ Container lumiere-db Healthy 
+ Container lumiere-db-replica Starting 
+ Container lumiere-db-replica Started 
+Esperando que el contenedor de réplica complete el base backup e inicie streaming...
+=== 4. Reiniciando backend para reconectar pools con la topología restablecida ===
+ Container joyeria-backend Restarting 
+ Container joyeria-backend Started 
+=== 5. Ejecutando verificación completa de replicación ===
+=== 1. Comprobando estado de contenedores del clúster ===
+NAME                 IMAGE                COMMAND                  SERVICE      CREATED          STATUS                        PORTS
+lumiere-db           postgres:17-alpine   "docker-entrypoint.s…"   db           21 hours ago     Up About a minute (healthy)   5432/tcp
+lumiere-db-replica   postgres:17-alpine   "/bin/sh /usr/local/…"   db-replica   36 seconds ago   Up 27 seconds (healthy)       5432/tcp
+=== 2. Comprobando roles del clúster (pg_is_in_recovery) ===
+Primario pg_is_in_recovery: f (esperado: f)
+Réplica  pg_is_in_recovery: t (esperado: t)
+=== 3. Comprobando canal de replicación WAL y Slot ===
+Primario sender streaming count: 1
+Réplica receiver status: streaming
+=== 4. Comprobando sincronización automática de datos ===
+Insertando registro en Primario: TEST_REPL_1794529778
+Consultando registro en Réplica...
+OK: El registro insertado en el primario se sincronizó automáticamente en la réplica.
+=== 5. Comprobando restricción de solo lectura en la Réplica ===
+OK: La réplica rechazó la escritura correctamente (read-only enforcement).
+=== 6. Limpieza de datos de prueba en el Primario ===
+=== RESULTADO: Verificación de Clúster Replicado Exitosa ===
+=== CLÚSTER RESTABLECIDO EXITOSAMENTE A SU TOPOLOGÍA BASE ===

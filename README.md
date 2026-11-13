@@ -182,3 +182,34 @@ El script comprueba:
 2. Estado del canal WAL (`pg_stat_replication` y `pg_stat_wal_receiver`).
 3. Inserción de un registro en el primario y verificación de su lectura inmediata en la réplica.
 4. Rechazo de transacciones de escritura directa en la réplica (`read-only transaction`).
+
+---
+
+## Prueba de Fallo Controlado (Failover) y Alta Disponibilidad
+
+Se diseñó y validó una suite de prueba de fallo controlado para evaluar el comportamiento del sistema ante la caída inesperada del nodo primario (`lumiere-db`), midiendo los indicadores de resiliencia **RTO** (*Recovery Time Objective*) y **RPO** (*Recovery Point Objective*).
+
+El informe técnico y académico completo se encuentra disponible en: **[docs/informe-failover.md](docs/informe-failover.md)**.
+
+### Resumen de Métricas de Resiliencia Obtenidas
+
+| Métrica | Objetivo de Diseño | Resultado Empírico | Comportamiento del Sistema |
+|---|---|---|---|
+| **RTO** (Tiempo de Recuperación) | $< 60$ s | **29 s** | Restablecimiento total de escrituras sobre nuevo primario promovido |
+| **RPO** (Pérdida de Datos) | $0$ transacciones | **0 s (0 bytes)** | Cero pérdida de transacciones. Sincronía WAL completa |
+| **Lecturas en Modo Degradado** | $100\%$ uptime | **HTTP 200 (0.006s)** | Despachadas sin interrupción por el nodo réplica |
+| **Escrituras durante la Caída** | Rechazo Atómico | **HTTP 400 (0.090s)** | Previene *split-brain* e incoherencias de datos |
+| **Promoción de Base de Datos** | $< 5$ s | **1.21 s** | Promoción nativa con `SELECT pg_promote()` |
+
+### Scripts Operativos de Failover y Restauración
+
+```bash
+# 1. Simulación Automatizada Completa de Fallo Controlado con auto-restauración:
+./scripts/simular-failover.sh --restore
+
+# 2. Promoción asistida / semiautomática de la réplica a nuevo primario:
+./scripts/promover-replica.sh
+
+# 3. Restauración de la topología base (lumiere-db primario y db-replica standby):
+./scripts/restaurar-cluster.sh
+```

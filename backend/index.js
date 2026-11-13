@@ -31,20 +31,51 @@ app.get('/api/health', async (req, res) => {
             topology: process.env.DB_READ_HOST ? 'replication' : 'standalone',
         }
     };
-    try {
-        if (process.env.DB_READ_HOST) {
+
+    if (process.env.DB_READ_HOST) {
+        let primaryHealthy = false;
+        let replicaHealthy = false;
+
+        try {
             await sequelize.authenticate({ useMaster: true });
             health.cluster.primary = { status: 'healthy', host: process.env.DB_WRITE_HOST || 'db' };
+            primaryHealthy = true;
+        } catch (err) {
+            health.cluster.primary = { status: 'down', host: process.env.DB_WRITE_HOST || 'db', error: err.message };
+        }
+
+        try {
             await sequelize.authenticate();
             health.cluster.replica = { status: 'healthy', host: process.env.DB_READ_HOST };
+            replicaHealthy = true;
+        } catch (err) {
+            health.cluster.replica = { status: 'down', host: process.env.DB_READ_HOST, error: err.message };
+        }
+
+        if (primaryHealthy && replicaHealthy) {
+            health.status = 'healthy';
+            return res.status(200).json(health);
+        } else if (replicaHealthy && !primaryHealthy) {
+            health.status = 'degraded_read_only';
+            return res.status(200).json(health);
+        } else if (primaryHealthy && !replicaHealthy) {
+            health.status = 'degraded_no_replica';
+            return res.status(200).json(health);
         } else {
+            health.status = 'outage';
+            return res.status(503).json(health);
+        }
+    } else {
+        try {
             await sequelize.authenticate();
             health.cluster.database = { status: 'healthy', host: process.env.DB_HOST || 'localhost' };
+            health.status = 'healthy';
+            return res.status(200).json(health);
+        } catch (err) {
+            health.status = 'down';
+            health.error = err.message;
+            return res.status(503).json(health);
         }
-        res.status(200).json(health);
-    } catch (err) {
-        health.error = err.message;
-        res.status(503).json(health);
     }
 });
 
