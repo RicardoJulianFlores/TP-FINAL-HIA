@@ -37,23 +37,50 @@ app.get('/api/health', async (req, res) => {
         let replicaHealthy = false;
 
         try {
-            await sequelize.authenticate({ useMaster: true });
-            health.cluster.primary = { status: 'healthy', host: process.env.DB_WRITE_HOST || 'db' };
+            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+                type: sequelize.QueryTypes.SELECT,
+                useMaster: true
+            });
+            health.cluster.primary = {
+                status: 'healthy',
+                host: process.env.DB_WRITE_HOST || 'db',
+                in_recovery: pRow ? pRow.in_recovery : false
+            };
             primaryHealthy = true;
         } catch (err) {
-            health.cluster.primary = { status: 'down', host: process.env.DB_WRITE_HOST || 'db', error: err.message };
+            health.cluster.primary = {
+                status: 'down',
+                host: process.env.DB_WRITE_HOST || 'db',
+                error: err.message
+            };
         }
 
         try {
-            await sequelize.authenticate();
-            health.cluster.replica = { status: 'healthy', host: process.env.DB_READ_HOST };
+            const [rRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+                type: sequelize.QueryTypes.SELECT,
+                useMaster: false
+            });
+            health.cluster.replica = {
+                status: 'healthy',
+                host: process.env.DB_READ_HOST,
+                in_recovery: rRow ? rRow.in_recovery : true
+            };
             replicaHealthy = true;
         } catch (err) {
-            health.cluster.replica = { status: 'down', host: process.env.DB_READ_HOST, error: err.message };
+            health.cluster.replica = {
+                status: 'down',
+                host: process.env.DB_READ_HOST,
+                error: err.message
+            };
         }
 
         if (primaryHealthy && replicaHealthy) {
-            health.status = 'healthy';
+            if (health.cluster.replica.in_recovery === false) {
+                // Standby promovido a primario (failover completado sin standby secundario adjunto)
+                health.status = 'promoted_primary_no_standby';
+            } else {
+                health.status = 'healthy';
+            }
             return res.status(200).json(health);
         } else if (replicaHealthy && !primaryHealthy) {
             health.status = 'degraded_read_only';
