@@ -189,8 +189,6 @@ El script comprueba:
 
 Se diseñó y validó una suite de prueba de fallo controlado para evaluar el comportamiento del sistema ante la caída inesperada del nodo primario (`lumiere-db`), midiendo los indicadores de resiliencia **RTO** (*Recovery Time Objective*) y **RPO** (*Recovery Point Objective*).
 
-El informe técnico y académico completo se encuentra disponible en: **[docs/informe-failover.md](docs/informe-failover.md)**.
-
 ### Resumen de Métricas de Resiliencia Obtenidas
 
 | Métrica | Objetivo de Diseño | Resultado Empírico | Comportamiento del Sistema |
