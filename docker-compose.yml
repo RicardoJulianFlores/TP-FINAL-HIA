@@ -1,4 +1,4 @@
-# Sistema completo Joyería Lumière: BD, pgAdmin, Backend (Express) y Frontend (Angular + Nginx)
+# Sistema completo Joyería Lumière: Clúster BD (Primario + Réplica), pgAdmin, Backend (Express) y Frontend (Angular + Nginx)
 # Uso: cp .env.example .env -> completar datos -> docker compose up -d --build
 
 services:
@@ -17,10 +17,24 @@ services:
     image: postgres:17-alpine
     container_name: lumiere-db
     restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+      - "-c"
+      - "wal_keep_size=128MB"
     environment:
       POSTGRES_DB: ${DB_NAME:-trabajoFinal}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+      DB_REPLICA_USER: ${DB_REPLICA_USER:-replicator}
+      DB_REPLICA_PASSWORD: ${DB_REPLICA_PASSWORD:-replica_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -30,7 +44,39 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - db-net
+      db-net:
+        aliases:
+          - db
+          - db-primary
+
+  db-replica:
+    image: postgres:17-alpine
+    container_name: lumiere-db-replica
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-trabajoFinal}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+      DB_PRIMARY_HOST: db
+      DB_PRIMARY_PORT: 5432
+      DB_REPLICA_USER: ${DB_REPLICA_USER:-replicator}
+      DB_REPLICA_PASSWORD: ${DB_REPLICA_PASSWORD:-replica_password}
+    volumes:
+      - pgdata-replica:/var/lib/postgresql/data
+      - ./db/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/replica-entrypoint.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      db-net:
+        aliases:
+          - db-replica
 
   pgadmin:
     image: dpage/pgadmin4:9
@@ -47,6 +93,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-replica:
+        condition: service_healthy
     networks:
       - db-net
       - admin-net
@@ -61,6 +109,10 @@ services:
       PORT: 3000
       DB_HOST: db
       DB_PORT: 5432
+      DB_WRITE_HOST: ${DB_WRITE_HOST:-db}
+      DB_WRITE_PORT: ${DB_WRITE_PORT:-5432}
+      DB_READ_HOST: ${DB_READ_HOST:-db-replica}
+      DB_READ_PORT: ${DB_READ_PORT:-5432}
       DB_NAME: ${DB_NAME:-trabajoFinal}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
@@ -70,6 +122,8 @@ services:
       - "3000:3000"
     depends_on:
       db:
+        condition: service_healthy
+      db-replica:
         condition: service_healthy
     networks:
       - db-net
@@ -91,10 +145,12 @@ services:
 volumes:
   pgdata:
     name: lumiere_pgdata
+  pgdata-replica:
+    name: lumiere_pgdata_replica
   pgadmin-data:
     name: lumiere_pgadmin_data
 
 networks:
   db-net:
-    internal: true       # Aislada: solo tráfico interno entre DB, Backend y pgAdmin
+    internal: true       # Aislada: solo tráfico interno entre DBs, Backend y pgAdmin
   admin-net: {}          # Puente: permite exponer puertos 8080, 3000 y 5050 hacia el host

@@ -23,6 +23,31 @@ app.use('/api/configuracion', require('./src/routes/configuracion.route'));
 
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
+app.get('/api/health', async (req, res) => {
+    const health = {
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        cluster: {
+            topology: process.env.DB_READ_HOST ? 'replication' : 'standalone',
+        }
+    };
+    try {
+        if (process.env.DB_READ_HOST) {
+            await sequelize.authenticate({ useMaster: true });
+            health.cluster.primary = { status: 'healthy', host: process.env.DB_WRITE_HOST || 'db' };
+            await sequelize.authenticate();
+            health.cluster.replica = { status: 'healthy', host: process.env.DB_READ_HOST };
+        } else {
+            await sequelize.authenticate();
+            health.cluster.database = { status: 'healthy', host: process.env.DB_HOST || 'localhost' };
+        }
+        res.status(200).json(health);
+    } catch (err) {
+        health.error = err.message;
+        res.status(503).json(health);
+    }
+});
+
 console.log("Access Token:", process.env.ACCESS_TOKEN);
 
 //setting
