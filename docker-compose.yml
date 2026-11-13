@@ -48,6 +48,7 @@ services:
         aliases:
           - db
           - db-primary
+      admin-net:
 
   db-replica:
     image: postgres:17-alpine
