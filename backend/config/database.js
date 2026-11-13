@@ -38,6 +38,9 @@ if (readHost) {
             idle: 10000,
             acquire: 30000,
         },
+        dialectOptions: {
+            connectTimeout: 5000,
+        },
         logging: false,
     });
 

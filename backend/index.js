@@ -31,20 +31,78 @@ app.get('/api/health', async (req, res) => {
             topology: process.env.DB_READ_HOST ? 'replication' : 'standalone',
         }
     };
-    try {
-        if (process.env.DB_READ_HOST) {
-            await sequelize.authenticate({ useMaster: true });
-            health.cluster.primary = { status: 'healthy', host: process.env.DB_WRITE_HOST || 'db' };
-            await sequelize.authenticate();
-            health.cluster.replica = { status: 'healthy', host: process.env.DB_READ_HOST };
+
+    if (process.env.DB_READ_HOST) {
+        let primaryHealthy = false;
+        let replicaHealthy = false;
+
+        try {
+            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+                type: sequelize.QueryTypes.SELECT,
+                useMaster: true
+            });
+            health.cluster.primary = {
+                status: 'healthy',
+                host: process.env.DB_WRITE_HOST || 'db',
+                in_recovery: pRow ? pRow.in_recovery : false
+            };
+            primaryHealthy = true;
+        } catch (err) {
+            health.cluster.primary = {
+                status: 'down',
+                host: process.env.DB_WRITE_HOST || 'db',
+                error: err.message
+            };
+        }
+
+        try {
+            const [rRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+                type: sequelize.QueryTypes.SELECT,
+                useMaster: false
+            });
+            health.cluster.replica = {
+                status: 'healthy',
+                host: process.env.DB_READ_HOST,
+                in_recovery: rRow ? rRow.in_recovery : true
+            };
+            replicaHealthy = true;
+        } catch (err) {
+            health.cluster.replica = {
+                status: 'down',
+                host: process.env.DB_READ_HOST,
+                error: err.message
+            };
+        }
+
+        if (primaryHealthy && replicaHealthy) {
+            if (health.cluster.replica.in_recovery === false) {
+                // Standby promovido a primario (failover completado sin standby secundario adjunto)
+                health.status = 'promoted_primary_no_standby';
+            } else {
+                health.status = 'healthy';
+            }
+            return res.status(200).json(health);
+        } else if (replicaHealthy && !primaryHealthy) {
+            health.status = 'degraded_read_only';
+            return res.status(200).json(health);
+        } else if (primaryHealthy && !replicaHealthy) {
+            health.status = 'degraded_no_replica';
+            return res.status(200).json(health);
         } else {
+            health.status = 'outage';
+            return res.status(503).json(health);
+        }
+    } else {
+        try {
             await sequelize.authenticate();
             health.cluster.database = { status: 'healthy', host: process.env.DB_HOST || 'localhost' };
+            health.status = 'healthy';
+            return res.status(200).json(health);
+        } catch (err) {
+            health.status = 'down';
+            health.error = err.message;
+            return res.status(503).json(health);
         }
-        res.status(200).json(health);
-    } catch (err) {
-        health.error = err.message;
-        res.status(503).json(health);
     }
 });
 

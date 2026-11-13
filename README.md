@@ -182,3 +182,37 @@ El script comprueba:
 2. Estado del canal WAL (`pg_stat_replication` y `pg_stat_wal_receiver`).
 3. Inserción de un registro en el primario y verificación de su lectura inmediata en la réplica.
 4. Rechazo de transacciones de escritura directa en la réplica (`read-only transaction`).
+
+---
+
+## Prueba de Fallo Controlado (Failover) y Alta Disponibilidad
+
+Se diseñó y validó una suite de prueba de fallo controlado para evaluar el comportamiento del sistema ante la caída inesperada del nodo primario (`lumiere-db`), midiendo los indicadores de resiliencia **RTO** (*Recovery Time Objective*) y **RPO** (*Recovery Point Objective*).
+
+### Resumen de Métricas de Resiliencia Obtenidas
+
+| Métrica | Objetivo de Diseño | Resultado Empírico | Comportamiento del Sistema |
+|---|---|---|---|
+| **RTO** (Tiempo de Recuperación) | $< 60$ s | **6 s a 26 s** | Restablecimiento total de escrituras sobre nuevo primario promovido |
+| **RPO** (Pérdida de Datos) | $0$ transacciones | **0 s (0 bytes)** | Cero pérdida de transacciones. Sincronía WAL completa |
+| **Persistencia tras Failback** | $100\%$ retención | **100% Preservado** | Transacciones post-failover sincronizadas sin pérdidas hacia el nodo original |
+| **Lecturas en Modo Degradado** | $100\%$ uptime | **HTTP 200 (0.004s)** | Despachadas sin interrupción por el nodo réplica |
+| **Escrituras durante la Caída** | Rechazo Atómico | **HTTP 400 (0.088s)** | Previene *split-brain* e incoherencias de datos |
+| **Promoción de Base de Datos** | $< 5$ s | **1.21 s a 3.96 s** | Promoción nativa con `SELECT pg_promote()` o `pg_ctl promote` |
+
+### Scripts Operativos de Failover y Restauración
+
+```bash
+# 1. Simulación Automatizada Completa de Fallo Controlado con auto-restauración y verificación de persistencia:
+./scripts/simular-failover.sh --restore
+
+# 2. Simulación utilizando el método alternativo de control pg_ctl:
+./scripts/simular-failover.sh --restore --method=pg_ctl
+
+# 3. Promoción asistida / semiautomática de la réplica a nuevo primario:
+./scripts/promover-replica.sh                 # Método SQL pg_promote()
+./scripts/promover-replica.sh --method=pg_ctl # Método de proceso pg_ctl
+
+# 4. Restauración de la topología base (lumiere-db primario y db-replica standby con preservación de datos):
+./scripts/restaurar-cluster.sh
+```
