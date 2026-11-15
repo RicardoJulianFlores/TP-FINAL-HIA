@@ -12,6 +12,6 @@ receivers:
   - name: 'n8n-webhook'
     webhook_configs:
       - url: 'http://n8n:5678/webhook/alerta-prometheus'
-        send_resolved: true
+        send_resolved: false
         http_config:
           bearer_token: 'LumiereWebhookSecret2026!'

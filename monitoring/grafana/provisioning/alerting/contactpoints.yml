@@ -9,5 +9,6 @@ contactPoints:
         settings:
           url: http://n8n:5678/webhook/alerta-prometheus
           httpMethod: POST
-        httpHeaderName: X-Webhook-Token
-        httpHeaderValue: LumiereWebhookSecret2026!
+          authorization_scheme: Bearer
+          authorization_credentials: LumiereWebhookSecret2026!
+

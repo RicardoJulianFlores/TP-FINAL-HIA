@@ -31,7 +31,7 @@ fi
 
 # 3. Esperar a que n8n esté saludable
 echo "Esperando a que n8n inicialice..."
-until docker exec "$CONTAINER_NAME" wget -qO- http://localhost:5678/healthz 2>/dev/null | grep -q "ok"; do
+until docker exec "$CONTAINER_NAME" wget -qO- http://127.0.0.1:5678/healthz 2>/dev/null | grep -q "ok"; do
   sleep 2
 done
 
@@ -52,26 +52,35 @@ db.get("SELECT id FROM workflow_entity WHERE name = ? LIMIT 1", [data.name], (er
     console.error("Error reading database:", err);
     process.exit(1);
   }
+  const nodesJson = JSON.stringify(data.nodes);
+  const connJson = JSON.stringify(data.connections);
   if (row && row.id) {
     db.run("UPDATE workflow_entity SET nodes = ?, connections = ?, active = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = ?", [
-      JSON.stringify(data.nodes),
-      JSON.stringify(data.connections),
+      nodesJson,
+      connJson,
       row.id
     ], (err2) => {
       if (err2) {
-        console.error("Error updating workflow:", err2);
+        console.error("Error updating workflow_entity:", err2);
         process.exit(1);
       }
-      console.log("Workflow actualizado y activado (ID: " + row.id + ")");
-      db.close();
+      db.run("UPDATE workflow_history SET nodes = ?, connections = ?, updatedAt = CURRENT_TIMESTAMP WHERE workflowId = ?", [
+        nodesJson,
+        connJson,
+        row.id
+      ], (errHistory) => {
+        if (errHistory) console.warn("Notice: workflow_history update returned:", errHistory);
+        console.log("Workflow sincronizado (ID: " + row.id + ")");
+        db.close();
+      });
     });
   } else {
     const id = "D93amS4phNYugPA8";
     db.run("INSERT INTO workflow_entity (id, name, active, nodes, connections, settings, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", [
       id,
       data.name,
-      JSON.stringify(data.nodes),
-      JSON.stringify(data.connections),
+      nodesJson,
+      connJson,
       JSON.stringify(data.settings || {})
     ], (err3) => {
       if (err3) {
@@ -85,12 +94,16 @@ db.get("SELECT id FROM workflow_entity WHERE name = ? LIMIT 1", [data.name], (er
 });
 '
 
+# 6. Publicar workflow formalmente con el CLI de n8n
+echo "Publicando versión activa del workflow con CLI n8n..."
+docker exec "$CONTAINER_NAME" n8n publish:workflow --id=D93amS4phNYugPA8 >/dev/null 2>&1 || true
+
 # 7. Reiniciar n8n para aplicar la publicación
 echo "Reiniciando $CONTAINER_NAME para aplicar cambios..."
 docker restart "$CONTAINER_NAME" >/dev/null
 
-echo "Esperando a que n8n vuelva a estar en línea..."
-until docker exec "$CONTAINER_NAME" wget -qO- http://localhost:5678/healthz 2>/dev/null | grep -q "ok"; do
+echo "Esperando a que n8n vuelva a estar en línea y registre el webhook..."
+until docker exec "$CONTAINER_NAME" wget -S -O- --post-data="{}" http://127.0.0.1:5678/webhook/alerta-prometheus 2>&1 | grep -q "401"; do
   sleep 2
 done
 

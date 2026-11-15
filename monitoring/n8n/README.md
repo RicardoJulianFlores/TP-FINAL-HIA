@@ -139,9 +139,10 @@ El flujo interactúa con la API REST de GLPI siguiendo las buenas prácticas de 
 Si el servicio GLPI no responde, experimenta un timeout o rechaza las credenciales, el flujo ejecuta una estrategia de **contingencia no bloqueante**:
 
 ### A. Detección del Fallo
-- El nodo `GLPI Init Session` tiene configurado un timeout de 8000 ms y `continueOnFail: true`.
+- El nodo `GLPI Init Session` tiene configurado un timeout de 15000 ms y `continueOnFail: true`.
 - El nodo condicional `If Sesion GLPI Creada` valida la presencia de `session_token`.
 - Si `session_token` es nulo o la conexión es rechazada (`ECONNREFUSED`, `ECONNABORTED`, HTTP 500/502/503), la ejecución se desvía a la rama `Manejo Error GLPI`.
+- En caso de que la sesión se cree pero falle la llamada subsiguiente a `GLPI Create Ticket`, la rama de fallo ejecuta preventivamente `GLPI Kill Session` para liberar el token en MariaDB y prevenir fugas de sesiones.
 
 ### B. Notificación de Contingencia al Equipo
 El nodo `Manejo Error GLPI` construye de inmediato un mensaje de alarma de alta prioridad:
@@ -154,7 +155,7 @@ El nodo `Manejo Error GLPI` construye de inmediato un mensaje de alarma de alta 
 • *Instancia:* lumiere-db:5432
 • *Resumen:* Caída del motor principal de Base de Datos
 • *Causa de la Falla:* Servicio GLPI inaccesible o error en API REST
-• *Detalle Error:* timeout of 8000ms exceeded (ECONNABORTED)
+• *Detalle Error:* timeout of 15000ms exceeded (ECONNABORTED)
 • *Acción Requerida:* Atender el incidente manualmente y verificar contenedor lumiere-glpi.
 ```
 Este mensaje se despacha por el canal de mensajería de emergencia.
@@ -168,13 +169,24 @@ Para evitar que Prometheus o Grafana asuman erróneamente que la alerta fue reci
   "message": "El servicio GLPI no está disponible para registrar la incidencia. Se ha emitido notificación de contingencia al equipo.",
   "alert": "PostgresDown",
   "error_detail": {
-    "message": "timeout of 8000ms exceeded",
+    "message": "timeout of 15000ms exceeded",
     "name": "AxiosError",
     "code": "ECONNABORTED"
   }
 }
 ```
 Esto permite a Alertmanager reintentar el envío de acuerdo con su directiva `repeat_interval`.
+
+### D. Manejo Seguro de Alertas Resueltas (Sin Falsos Positivos)
+Cuando Alertmanager o Grafana emiten una notificación de resolución (`status: "resolved"` o todas las alertas en el array con `status: "resolved"`), el nodo de validación detecta la condición y responde inmediatamente con **HTTP 200 OK** (`resolved_acknowledged`):
+```json
+{
+  "status": "resolved_acknowledged",
+  "message": "Alerta 'PostgresDown' fue resuelta en origen. No se requiere creación de ticket en GLPI.",
+  "alertname": "PostgresDown"
+}
+```
+Esto evita la apertura de tickets espurios o duplicados en GLPI ante la recuperación de servicios.
 
 ---
 
@@ -209,7 +221,7 @@ El script copia `monitoring/n8n/workflows/flujo-1-alerta-prometheus-glpi.json`, 
 
 ### Paso 3: Ejecución de la Suite de Pruebas Automatizadas
 
-Se proporciona un script completo que valida los 8 escenarios de prueba:
+Se proporciona un script completo que valida los 10 escenarios de prueba de extremo a extremo:
 ```bash
 chmod +x scripts/test-alerta-n8n-glpi.sh
 ./scripts/test-alerta-n8n-glpi.sh
@@ -245,10 +257,17 @@ TEST: 7. Verificación del Incidente en API REST de GLPI
 TEST: 8. Manejo de Errores y Contingencia cuando GLPI no responde (502)
 ✔ [PASS] Manejo de contingencia activa respuesta 502 y notificación de emergencia
 
+TEST: 9. Autenticación con Header Authorization: Bearer
+✔ [PASS] Autenticación Bearer válida crea ticket exitosamente (HTTP 201 esperado)
+
+TEST: 10. Manejo Seguro de Alertas Resueltas (status: resolved -> 200 OK sin crear ticket)
+✔ [PASS] Alerta resuelta responde 200 OK sin generar ticket falso positivo (HTTP 200 esperado)
+✔ [PASS] Payload de alerta resuelta confirmado (resolved_acknowledged)
+
 ======================================================================
                        RESUMEN DE PRUEBAS                             
 ======================================================================
-Pruebas Exitosas: 8
+Pruebas Exitosas: 11
 Pruebas Fallidas: 0
 
 ✔ TODOS LOS CRITERIOS DE ACEPTACIÓN SE CUMPLIERON EXITOSAMENTE.
@@ -299,3 +318,23 @@ curl -i -X POST http://localhost:5678/webhook/alerta-prometheus \
 - Ingresar a [http://localhost:8086](http://localhost:8086)
 - Usuario: `mchambi` | Contraseña: `Lumiere2026!`
 - Ir a **Soporte ➔ Casos**: observar el ticket generado con título `[PROMETHEUS] PostgresDown`, asignado a Marcos Chambi, con prioridad Muy Alta (5) y categoría *Rendimiento y Base de Datos*.
+
+---
+
+### Paso 5: Prueba de Disparo Real de Alerta desde Clúster (Prometheus ➔ Alertmanager ➔ n8n ➔ GLPI)
+
+Para validar la integración completa sin invocar webhooks sintéticos manualmente:
+1. Detener el contenedor de base de datos principal:
+   ```bash
+   docker stop lumiere-db
+   ```
+2. Esperar 30 segundos observando Prometheus en [http://localhost:9090/alerts](http://localhost:9090/alerts):
+   - La regla `PostgresDown` transiciona de `inactive` a `pending` (evaluación de `pg_up == 0`).
+   - Al cumplirse el umbral de 15 segundos continuos, la regla transiciona a **FIRING**.
+3. Alertmanager recibe la alerta y la reenvía automáticamente al webhook de n8n con cabecera `Authorization: Bearer LumiereWebhookSecret2026!`.
+4. n8n crea automáticamente el incidente en GLPI con categoría *Rendimiento y Base de Datos* y prioridad 5 (Crítica).
+5. Reiniciar el contenedor:
+   ```bash
+   docker start lumiere-db
+   ```
+6. Prometheus detecta la recuperación (`pg_up == 1`), la alerta pasa a estado inactivo y n8n confirma la resolución sin abrir tickets duplicados.

@@ -235,6 +235,73 @@ echo "Respuesta recibida ante caída de GLPI: $BODY"
 assert_status 502 "$HTTP_CODE" "Manejo de contingencia activa respuesta 502 y notificación de emergencia"
 
 # ------------------------------------------------------------------------------
+# Test 9: Autenticación con Header Bearer (Alertmanager / Grafana)
+# ------------------------------------------------------------------------------
+log_test "9. Autenticación con Header Authorization: Bearer"
+RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$N8N_URL" \
+  -H "Authorization: Bearer $WEBHOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "firing",
+    "alerts": [
+      {
+        "status": "firing",
+        "labels": {
+          "alertname": "HostHighCpuUsage",
+          "severity": "warning",
+          "instance": "lumiere-node-exporter:9100",
+          "area": "Infraestructura, Red y Contenedores"
+        },
+        "annotations": {
+          "summary": "Uso de CPU elevado en host",
+          "description": "El uso de CPU superó el 85% durante 5 minutos."
+        }
+      }
+    ]
+  }')
+HTTP_CODE=$(echo "$RESP" | grep "HTTP_STATUS:" | cut -d':' -f2)
+BODY=$(echo "$RESP" | grep -v "HTTP_STATUS:")
+echo "Respuesta n8n: $BODY"
+assert_status 201 "$HTTP_CODE" "Autenticación Bearer válida crea ticket exitosamente"
+
+# ------------------------------------------------------------------------------
+# Test 10: Manejo Seguro de Alertas Resueltas (status: resolved -> HTTP 200 sin ticket duplicado)
+# ------------------------------------------------------------------------------
+log_test "10. Manejo Seguro de Alertas Resueltas (status: resolved -> 200 OK sin crear ticket)"
+RESP=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST "$N8N_URL" \
+  -H "Authorization: Bearer $WEBHOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "receiver": "n8n-webhook",
+    "status": "resolved",
+    "alerts": [
+      {
+        "status": "resolved",
+        "labels": {
+          "alertname": "PostgresDown",
+          "severity": "critical",
+          "instance": "lumiere-db:5432"
+        },
+        "annotations": {
+          "summary": "Recuperación de Postgres",
+          "description": "El servicio lumiere-db ha vuelto a operar normalmente."
+        }
+      }
+    ]
+  }')
+HTTP_CODE=$(echo "$RESP" | grep "HTTP_STATUS:" | cut -d':' -f2)
+BODY=$(echo "$RESP" | grep -v "HTTP_STATUS:")
+echo "Respuesta n8n: $BODY"
+assert_status 200 "$HTTP_CODE" "Alerta resuelta responde 200 OK sin generar ticket falso positivo"
+if echo "$BODY" | grep -q "resolved_acknowledged"; then
+  echo -e "${GREEN}✔ [PASS] Payload de alerta resuelta confirmado (resolved_acknowledged)${NC}"
+  PASS_COUNT=$((PASS_COUNT + 1))
+else
+  echo -e "${RED}✘ [FAIL] Payload de alerta resuelta no contiene confirmación esperada${NC}"
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+
+# ------------------------------------------------------------------------------
 # Resumen Final
 # ------------------------------------------------------------------------------
 echo -e "\n${BLUE}======================================================================${NC}"

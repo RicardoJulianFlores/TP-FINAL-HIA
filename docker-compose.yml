@@ -54,8 +54,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - N8N_HOST=localhost
+      - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
+      - N8N_LISTEN_ADDRESS=0.0.0.0
       - GENERIC_TIMEZONE=America/Argentina/Jujuy
       - WEBHOOK_URL=http://localhost:5678/
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
@@ -65,6 +66,7 @@ services:
       - GLPI_USER=mchambi
       - GLPI_PASSWORD=Lumiere2026!
       - WEBHOOK_AUTH_TOKEN=LumiereWebhookSecret2026!
+      - NOTIFICATION_WEBHOOK_URL=${NOTIFICATION_WEBHOOK_URL:-}
     volumes:
       - n8n_data:/home/node/.n8n
       - ./monitoring/n8n/workflows:/data/workflows:ro

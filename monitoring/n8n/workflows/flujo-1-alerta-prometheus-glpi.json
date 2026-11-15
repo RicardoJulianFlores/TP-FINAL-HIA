@@ -21,7 +21,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const headers = $input.item.json.headers || {};\nconst tokenHeader = headers['x-webhook-token'] || headers['X-Webhook-Token'] || '';\nconst authHeader = headers['authorization'] || headers['Authorization'] || '';\nconst expectedSecret = 'LumiereWebhookSecret2026!';\n\nlet isAuthorized = false;\nif (tokenHeader === expectedSecret) {\n  isAuthorized = true;\n} else if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === expectedSecret) {\n  isAuthorized = true;\n}\n\nreturn {\n  json: {\n    is_authorized: isAuthorized,\n    raw_body: $input.item.json.body || {},\n    headers: headers\n  }\n};"
+        "jsCode": "const headers = $input.item.json.headers || {};\nconst tokenHeader = headers['x-webhook-token'] || headers['X-Webhook-Token'] || '';\nconst authHeader = headers['authorization'] || headers['Authorization'] || '';\nconst expectedSecret = $env.WEBHOOK_AUTH_TOKEN || 'LumiereWebhookSecret2026!';\n\nlet isAuthorized = false;\nif (tokenHeader === expectedSecret) {\n  isAuthorized = true;\n} else if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === expectedSecret) {\n  isAuthorized = true;\n}\n\nreturn {\n  json: {\n    is_authorized: isAuthorized,\n    raw_body: $input.item.json.body || {},\n    headers: headers\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -84,7 +84,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const raw = $input.item.json.raw_body || {};\n\nlet alert = null;\nlet status = raw.status || raw.state || 'firing';\n\nif (Array.isArray(raw.alerts) && raw.alerts.length > 0) {\n  alert = raw.alerts.find(a => (a.status || 'firing') === 'firing') || raw.alerts[0];\n} else if (raw.alertname || (raw.labels && raw.labels.alertname)) {\n  alert = raw;\n} else if (raw.title && (raw.state || raw.message)) {\n  alert = {\n    labels: { alertname: raw.title, severity: 'warning' },\n    annotations: { summary: raw.title, description: raw.message || raw.title }\n  };\n}\n\nif (!alert) {\n  return {\n    json: {\n      is_valid: false,\n      error_message: \"Estructura de payload inválida: no se encontró ninguna alerta válida o el array 'alerts' está vacío.\"\n    }\n  };\n}\n\nconst labels = alert.labels || {};\nconst annotations = alert.annotations || {};\n\nconst alertname = labels.alertname || raw.commonLabels?.alertname || raw.groupLabels?.alertname || alert.alertname || raw.title || 'Alerta-Sin-Nombre';\nconst severity = (labels.severity || raw.commonLabels?.severity || 'warning').toLowerCase();\nconst instance = labels.instance || labels.host || 'infraestructura-lumiere';\nconst job = labels.job || 'lumiere-monitoring';\nconst areaLabel = labels.area || labels.categoria || '';\nconst summary = annotations.summary || raw.commonAnnotations?.summary || alert.summary || raw.title || alertname;\nconst description = annotations.description || raw.commonAnnotations?.description || alert.description || raw.message || 'Sin descripción detallada disponible.';\nconst startsAt = alert.startsAt || new Date().toISOString();\n\nlet categoryId = 4;\nlet categoryName = 'Alertas Automáticas (Prometheus / n8n)';\n\nconst textToAnalyze = `${alertname} ${summary} ${description} ${job} ${areaLabel}`.toLowerCase();\n\nif (areaLabel.toLowerCase().includes('seguridad') || /owasp|trivy|token|jwt|auth|security|vulnerab|unauthorized|ataque|pass/i.test(textToAnalyze)) {\n  categoryId = 1;\n  categoryName = 'Seguridad Informática y Vulnerabilidades';\n} else if (areaLabel.toLowerCase().includes('rendimiento') || /postgres|database|db|latency|latencia|query|lenta|wal|replic|replica|sql|pool/i.test(textToAnalyze)) {\n  categoryId = 2;\n  categoryName = 'Rendimiento y Base de Datos';\n} else if (areaLabel.toLowerCase().includes('infraestructura') || /container|contenedor|docker|cadvisor|node|cpu|memoria|memory|disco|disk|tunnel|cloudflare|host|red|down|fail/i.test(textToAnalyze)) {\n  categoryId = 3;\n  categoryName = 'Infraestructura, Red y Contenedores';\n}\n\nlet urgency = 3;\nlet impact = 3;\nlet priority = 3;\n\nif (severity === 'critical' || severity === 'fatal') {\n  urgency = 5;\n  impact = 5;\n  priority = 5;\n} else if (severity === 'warning' || severity === 'high') {\n  urgency = 4;\n  impact = 4;\n  priority = 4;\n} else if (severity === 'medium') {\n  urgency = 3;\n  impact = 3;\n  priority = 3;\n} else {\n  urgency = 2;\n  impact = 2;\n  priority = 2;\n}\n\nconst ticketName = `[PROMETHEUS] ${alertname} - ${summary.slice(0, 80)}`;\nconst ticketContent = `&lt;h3&gt;Alerta Automática de Infraestructura - Joyería Lumière&lt;/h3&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Alerta:&lt;/strong&gt; ${alertname}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Severidad:&lt;/strong&gt; ${severity.toUpperCase()}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Instancia / Host:&lt;/strong&gt; ${instance}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Origen / Job:&lt;/strong&gt; ${job}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Fecha y Hora de Detección:&lt;/strong&gt; ${startsAt}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Área Asignada (ITIL):&lt;/strong&gt; ${categoryName}&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Resumen:&lt;/strong&gt; ${summary}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Detalle Técnico:&lt;/strong&gt;&lt;br/&gt;&lt;pre&gt;${description}&lt;/pre&gt;&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;small&gt;Ticket generado automáticamente por el flujo n8n (JOY-30). Responsable técnico asignado: Marcos Chambi (SRE).&lt;/small&gt;&lt;/p&gt;`;\n\nreturn {\n  json: {\n    is_valid: true,\n    alertname,\n    severity,\n    instance,\n    job,\n    summary,\n    description,\n    startsAt,\n    category_id: categoryId,\n    category_name: categoryName,\n    urgency,\n    impact,\n    priority,\n    assigned_user_id: 7,\n    ticket_name: ticketName,\n    ticket_content: ticketContent\n  }\n};"
+        "jsCode": "const raw = $input.item.json.raw_body || {};\n\nlet alert = null;\nlet status = (raw.status || raw.state || 'firing').toLowerCase();\n\nif (Array.isArray(raw.alerts) && raw.alerts.length > 0) {\n  alert = raw.alerts.find(a => (a.status || 'firing').toLowerCase() === 'firing');\n  if (!alert && raw.alerts.every(a => (a.status || '').toLowerCase() === 'resolved')) {\n    const resolvedAlert = raw.alerts[0];\n    const alertname = resolvedAlert.labels?.alertname || raw.commonLabels?.alertname || 'Alerta-Resuelta';\n    return {\n      json: {\n        is_valid: true,\n        is_resolved: true,\n        alertname: alertname,\n        message: `Alerta '${alertname}' fue resuelta en origen. No se requiere creación de ticket en GLPI.`\n      }\n    };\n  }\n} else if (raw.alertname || (raw.labels && raw.labels.alertname)) {\n  alert = raw;\n} else if (raw.title && (raw.state || raw.message)) {\n  alert = {\n    labels: { alertname: raw.title, severity: 'warning' },\n    annotations: { summary: raw.title, description: raw.message || raw.title }\n  };\n}\n\nif (status === 'resolved') {\n  const alertname = alert?.labels?.alertname || raw.alertname || raw.title || 'Alerta-Resuelta';\n  return {\n    json: {\n      is_valid: true,\n      is_resolved: true,\n      alertname: alertname,\n      message: `Alerta '${alertname}' fue resuelta en origen. No se requiere creación de ticket en GLPI.`\n    }\n  };\n}\n\nif (!alert) {\n  return {\n    json: {\n      is_valid: false,\n      is_resolved: false,\n      error_message: \"Estructura de payload inválida: no se encontró ninguna alerta válida o el array 'alerts' está vacío.\"\n    }\n  };\n}\n\nconst labels = alert.labels || {};\nconst annotations = alert.annotations || {};\n\nconst alertname = labels.alertname || raw.commonLabels?.alertname || raw.groupLabels?.alertname || alert.alertname || raw.title || 'Alerta-Sin-Nombre';\nconst severity = (labels.severity || raw.commonLabels?.severity || 'warning').toLowerCase();\nconst instance = labels.instance || labels.host || 'infraestructura-lumiere';\nconst job = labels.job || 'lumiere-monitoring';\nconst areaLabel = labels.area || labels.categoria || '';\nconst summary = annotations.summary || raw.commonAnnotations?.summary || alert.summary || raw.title || alertname;\nconst description = annotations.description || raw.commonAnnotations?.description || alert.description || raw.message || 'Sin descripción detallada disponible.';\nconst startsAt = alert.startsAt || new Date().toISOString();\n\nlet categoryId = 4;\nlet categoryName = 'Alertas Automáticas (Prometheus / n8n)';\n\nconst textToAnalyze = `${alertname} ${summary} ${description} ${job} ${areaLabel}`.toLowerCase();\n\nif (areaLabel.toLowerCase().includes('seguridad') || /owasp|trivy|token|jwt|auth|security|vulnerab|unauthorized|ataque|pass/i.test(textToAnalyze)) {\n  categoryId = 1;\n  categoryName = 'Seguridad Informática y Vulnerabilidades';\n} else if (areaLabel.toLowerCase().includes('rendimiento') || /postgres|database|db|latency|latencia|query|lenta|wal|replic|replica|sql|pool/i.test(textToAnalyze)) {\n  categoryId = 2;\n  categoryName = 'Rendimiento y Base de Datos';\n} else if (areaLabel.toLowerCase().includes('infraestructura') || /container|contenedor|docker|cadvisor|node|cpu|memoria|memory|disco|disk|tunnel|cloudflare|host|red|down|fail/i.test(textToAnalyze)) {\n  categoryId = 3;\n  categoryName = 'Infraestructura, Red y Contenedores';\n}\n\nlet urgency = 3;\nlet impact = 3;\nlet priority = 3;\n\nif (severity === 'critical' || severity === 'fatal') {\n  urgency = 5;\n  impact = 5;\n  priority = 5;\n} else if (severity === 'warning' || severity === 'high') {\n  urgency = 4;\n  impact = 4;\n  priority = 4;\n} else if (severity === 'medium') {\n  urgency = 3;\n  impact = 3;\n  priority = 3;\n} else {\n  urgency = 2;\n  impact = 2;\n  priority = 2;\n}\n\nconst ticketName = `[PROMETHEUS] ${alertname} - ${summary.slice(0, 80)}`;\nconst ticketContent = `&lt;h3&gt;Alerta Automática de Infraestructura - Joyería Lumière&lt;/h3&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Alerta:&lt;/strong&gt; ${alertname}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Severidad:&lt;/strong&gt; ${severity.toUpperCase()}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Instancia / Host:&lt;/strong&gt; ${instance}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Origen / Job:&lt;/strong&gt; ${job}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Fecha y Hora de Detección:&lt;/strong&gt; ${startsAt}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Área Asignada (ITIL):&lt;/strong&gt; ${categoryName}&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Resumen:&lt;/strong&gt; ${summary}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Detalle Técnico:&lt;/strong&gt;&lt;br/&gt;&lt;pre&gt;${description}&lt;/pre&gt;&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;small&gt;Ticket generado automáticamente por el flujo n8n (JOY-30). Responsable técnico asignado: Marcos Chambi (SRE).&lt;/small&gt;&lt;/p&gt;`;\n\nreturn {\n  json: {\n    is_valid: true,\n    is_resolved: false,\n    alertname,\n    severity,\n    instance,\n    job,\n    summary,\n    description,\n    startsAt,\n    category_id: categoryId,\n    category_name: categoryName,\n    urgency,\n    impact,\n    priority,\n    assigned_user_id: 7,\n    ticket_name: ticketName,\n    ticket_content: ticketContent\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -146,17 +146,66 @@
     },
     {
       "parameters": {
-        "url": "http://lumiere-glpi/apirest.php/initSession",
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-resolved",
+              "leftValue": "={{ $json.is_resolved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        40
+      ],
+      "id": "node-if-resolved",
+      "name": "If Alerta Resuelta"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"resolved_acknowledged\",\n  \"message\": {{ JSON.stringify($json.message) }},\n  \"alertname\": {{ JSON.stringify($json.alertname) }}\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        740,
+        -100
+      ],
+      "id": "node-resp-200-resolved",
+      "name": "Respuesta 200 Alerta Resuelta"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.GLPI_BASE_URL || 'http://lumiere-glpi/apirest.php' }}/initSession",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "App-Token",
-              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+              "value": "={{ $env.GLPI_APP_TOKEN || 'LumiereN8NAppToken2026SecureKeyJOY30' }}"
             },
             {
               "name": "Authorization",
-              "value": "Basic bWNoYW1iaTpMdW1pZXJlMjAyNiE="
+              "value": "={{ $env.GLPI_AUTH_HEADER || 'Basic bWNoYW1iaTpMdW1pZXJlMjAyNiE=' }}"
             }
           ]
         },
@@ -167,8 +216,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        520,
-        40
+        740,
+        100
       ],
       "id": "node-glpi-init-session",
       "name": "GLPI Init Session",
@@ -200,8 +249,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        740,
-        40
+        960,
+        100
       ],
       "id": "node-if-session",
       "name": "If Sesion GLPI Creada"
@@ -209,13 +258,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://lumiere-glpi/apirest.php/Ticket",
+        "url": "={{ $env.GLPI_BASE_URL || 'http://lumiere-glpi/apirest.php' }}/Ticket",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "App-Token",
-              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+              "value": "={{ $env.GLPI_APP_TOKEN || 'LumiereN8NAppToken2026SecureKeyJOY30' }}"
             },
             {
               "name": "Session-Token",
@@ -237,8 +286,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        960,
-        -40
+        1180,
+        20
       ],
       "id": "node-glpi-create-ticket",
       "name": "GLPI Create Ticket",
@@ -270,21 +319,21 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1180,
-        -40
+        1400,
+        20
       ],
       "id": "node-if-ticket",
       "name": "If Ticket Creado"
     },
     {
       "parameters": {
-        "url": "http://lumiere-glpi/apirest.php/killSession",
+        "url": "={{ $env.GLPI_BASE_URL || 'http://lumiere-glpi/apirest.php' }}/killSession",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "App-Token",
-              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+              "value": "={{ $env.GLPI_APP_TOKEN || 'LumiereN8NAppToken2026SecureKeyJOY30' }}"
             },
             {
               "name": "Session-Token",
@@ -299,8 +348,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1400,
-        -140
+        1620,
+        -80
       ],
       "id": "node-glpi-kill-session",
       "name": "GLPI Kill Session",
@@ -314,28 +363,60 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1400,
-        60
+        1620,
+        120
       ],
       "id": "node-formatear-notif",
       "name": "Formatear Notificacion Exito"
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-notif-cfg",
+              "leftValue": "={{ Boolean($env.NOTIFICATION_WEBHOOK_URL) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        120
+      ],
+      "id": "node-if-notif-cfg",
+      "name": "If Notif Configurada"
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:9999/notify",
+        "url": "={{ $env.NOTIFICATION_WEBHOOK_URL }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"ticket_id\": {{ $json.ticket_id }},\n  \"alertname\": {{ JSON.stringify($json.alertname) }},\n  \"severity\": {{ JSON.stringify($json.severity) }},\n  \"category\": {{ JSON.stringify($json.category_name) }},\n  \"priority\": {{ $json.priority }},\n  \"message\": {{ JSON.stringify($json.message_text) }},\n  \"glpi_url\": {{ JSON.stringify($json.glpi_url) }}\n}",
         "options": {
-          "timeout": 1500
+          "timeout": 3000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1620,
-        60
+        2060,
+        40
       ],
       "id": "node-enviar-notif",
       "name": "Enviar Notificacion Equipo",
@@ -352,8 +433,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1840,
-        60
+        2280,
+        120
       ],
       "id": "node-resp-201",
       "name": "Respuesta 201 Ticket Creado"
@@ -366,27 +447,59 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        220
+        1620,
+        280
       ],
       "id": "node-manejo-error-glpi",
       "name": "Manejo Error GLPI"
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-notif-emerg-cfg",
+              "leftValue": "={{ Boolean($env.NOTIFICATION_WEBHOOK_URL) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        280
+      ],
+      "id": "node-if-notif-emerg-cfg",
+      "name": "If Notif Emergencia Configurada"
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:9999/notify",
+        "url": "={{ $env.NOTIFICATION_WEBHOOK_URL }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"emergency\": true,\n  \"alertname\": {{ JSON.stringify($json.alertname) }},\n  \"severity\": {{ JSON.stringify($json.severity) }},\n  \"error\": {{ JSON.stringify($json.error_detail) }},\n  \"message\": {{ JSON.stringify($json.message_text) }}\n}",
         "options": {
-          "timeout": 1500
+          "timeout": 3000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1180,
+        2060,
         220
       ],
       "id": "node-notif-error-glpi",
@@ -404,8 +517,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1400,
-        220
+        2280,
+        280
       ],
       "id": "node-resp-502",
       "name": "Respuesta 502 GLPI Inaccesible"
@@ -467,7 +580,7 @@
       "main": [
         [
           {
-            "node": "GLPI Init Session",
+            "node": "If Alerta Resuelta",
             "type": "main",
             "index": 0
           }
@@ -475,6 +588,24 @@
         [
           {
             "node": "Respuesta 400 Payload Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Alerta Resuelta": {
+      "main": [
+        [
+          {
+            "node": "Respuesta 200 Alerta Resuelta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GLPI Init Session",
             "type": "main",
             "index": 0
           }
@@ -537,6 +668,11 @@
         ],
         [
           {
+            "node": "GLPI Kill Session",
+            "type": "main",
+            "index": 0
+          },
+          {
             "node": "Manejo Error GLPI",
             "type": "main",
             "index": 0
@@ -548,7 +684,25 @@
       "main": [
         [
           {
+            "node": "If Notif Configurada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Notif Configurada": {
+      "main": [
+        [
+          {
             "node": "Enviar Notificacion Equipo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta 201 Ticket Creado",
             "type": "main",
             "index": 0
           }
@@ -570,7 +724,25 @@
       "main": [
         [
           {
+            "node": "If Notif Emergencia Configurada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Notif Emergencia Configurada": {
+      "main": [
+        [
+          {
             "node": "Enviar Notificacion Emergencia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta 502 GLPI Inaccesible",
             "type": "main",
             "index": 0
           }
