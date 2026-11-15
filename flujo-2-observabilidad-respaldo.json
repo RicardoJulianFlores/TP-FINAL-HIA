@@ -1,0 +1,295 @@
+{
+  "name": "flujo-2-observabilidad-respaldo",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        112,
+        0
+      ],
+      "id": "aabee891-7e47-4a69-b32a-4f2a3a6f0be8",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    current_database() AS db_name,\n    pg_database_size(current_database()) AS size_bytes,\n    pg_size_pretty(pg_database_size(current_database())) AS size_formatted,\n    CASE \n        WHEN pg_database_size(current_database()) > 1048576 THEN 'VALIDO' \n        ELSE 'BAJO_UMBRAL' \n    END AS estado_integridad;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.8,
+      "position": [
+        288,
+        0
+      ],
+      "id": "ea00b1c0-5379-46c3-82d6-7f2b2a592dea",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "3DEUEnAVhBTYYafC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "1de10b3e-b41b-4324-96fa-ba81e0dbceff",
+              "leftValue": "={{ Number($json.size_bytes) }}",
+              "rightValue": 1048576,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        448,
+        0
+      ],
+      "id": "4449bdb1-930c-4871-b4f4-24dff4eab7d7",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d6391a80-afa0-48a1-92c7-44e4ee74d4e7",
+              "name": "texto_reporte",
+              "value": "=[AUDITORÍA JOY-31 / Flujo 2 - OK]\n- Timestamp: {{ $now.format('yyyy-MM-dd HH:mm:ss') }}\n- Base de Datos: {{ $('Execute a SQL query').item.json.db_name }}\n- Tamaño del Respaldo: {{ $('Execute a SQL query').item.json.size_formatted }}\n- Estado de Integridad: {{ $('Execute a SQL query').item.json.estado_integridad }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        -96
+      ],
+      "id": "9f6837e9-b0d7-4bff-a996-64155ff7559f",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "texto_reporte",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "d6906227-afab-406c-88b7-ace235b38f58",
+      "name": "Convert to File",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "path": "=/BackupDB/log_backup({{ $now }}).txt",
+        "binaryDataUpload": true
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "78a7cebd-cdb2-4faa-aeea-c8eee8cc8909",
+      "name": "Upload a file",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "nNkQ2BwGaxynxMgj",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a8bd6ab3-3736-40d9-93ea-090118c551f6",
+              "name": "texto_alerta",
+              "value": "=[ALERTA CRÍTICA - JOY-31/Flujo 2] El respaldo de la base de datos no supera el umbral mínimo esperado o está corrupto.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        96
+      ],
+      "id": "45522c3b-7264-444d-b1af-84442c3f7e7b",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "texto_alerta",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        96
+      ],
+      "id": "5bb0ae08-7b0b-456e-a51b-0ccdab72d337",
+      "name": "Convert to File1"
+    },
+    {
+      "parameters": {
+        "path": "/BackupDB/alerta_respaldo_critico.txt",
+        "binaryDataUpload": true
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        96
+      ],
+      "id": "d8c395c8-95f1-4877-935e-e2df1601a2b4",
+      "name": "Upload a file1",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "nNkQ2BwGaxynxMgj",
+          "name": "NextCloud account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Upload a file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ec2ec367-fce1-4a64-a652-e4459d11785f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8a81cadfe03261323aac1a18a798d901c4852f13f5c2e9cb2715db6bb27c5108"
+  },
+  "nodeGroups": [],
+  "id": "AQpzvJzA0I4hjkCS",
+  "tags": []
+}
