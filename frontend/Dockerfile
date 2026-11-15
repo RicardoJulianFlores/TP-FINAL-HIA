@@ -16,6 +16,9 @@ RUN npm run build -- --configuration production
 # ==========================================
 FROM nginx:alpine
 
+# Parchear paquetes base del SO (Alpine) contra CVEs críticos/altos
+RUN apk update && apk upgrade --no-cache
+
 # Limpiar los archivos por defecto de Nginx ("Welcome to nginx!")
 RUN rm -rf /usr/share/nginx/html/*
 

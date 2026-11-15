@@ -31,6 +31,7 @@ services:
       - nextcloud_data:/var/www/html
     networks:
       - nextcloud_net
+      - admin-net
 
 volumes:
   nextcloud_db_data:
@@ -42,3 +43,6 @@ networks:
   nextcloud_net:
     name: red_nextcloud_interna
     driver: bridge
+  admin-net:
+    name: tp-final-hia_admin-net
+    external: true

@@ -24,8 +24,8 @@ export interface RegistrarPagoRequest {
   providedIn: 'root'
 })
 export class PedidoService {
-  private urlPedidos = 'http://localhost:3000/api/pedidos';
-  private urlPagos = 'http://localhost:3000/api/pagos';
+  private urlPedidos = '/api/pedidos';
+  private urlPagos = '/api/pagos';
 
   constructor(private http: HttpClient) { }
 
