@@ -49,6 +49,11 @@ docker exec lumiere-glpi rm -f /var/www/html/glpi/install/install.php
 echo "5. Aplicando parametrizacion inicial de ITIL, Usuarios y API REST..."
 docker exec -i lumiere-glpi-db mariadb -u "$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE" < "$DIR/init-parametrizacion.sql"
 
+# Conectar lumiere-glpi a la red de administracion del stack principal si existe
+if docker network inspect tp-final-hia_admin-net >/dev/null 2>&1; then
+  docker network connect tp-final-hia_admin-net lumiere-glpi 2>/dev/null || true
+fi
+
 echo "=== Despliegue y Parametrizacion completados con exito ==="
 echo "Acceso Web: http://localhost:${GLPI_PORT:-8086}"
 echo "Credenciales de integrantes: <usuario> / Lumiere2026!"

@@ -1,0 +1,60 @@
+groups:
+  - name: joyeria_lumiere_alerts
+    rules:
+      # 1. Base de Datos / Rendimiento (Categoría ITIL: Rendimiento y Base de Datos)
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 15s
+        labels:
+          severity: critical
+          area: "Rendimiento y Base de Datos"
+          job: postgres-exporter
+        annotations:
+          summary: "Instancia de base de datos PostgreSQL caída"
+          description: "El exportador de PostgreSQL reporta que la base de datos de negocio no responde a consultas."
+
+      - alert: PostgresHighConnections
+        expr: pg_stat_activity_count > 80
+        for: 30s
+        labels:
+          severity: warning
+          area: "Rendimiento y Base de Datos"
+          job: postgres-exporter
+        annotations:
+          summary: "Alto número de conexiones activas a PostgreSQL"
+          description: "La cantidad de conexiones activas a la base de datos supera el umbral del 80% del pool disponible."
+
+      # 2. Infraestructura y Contenedores (Categoría ITIL: Infraestructura, Red y Contenedores)
+      - alert: ContainerDown
+        expr: time() - container_last_seen{name=~"joyeria-backend|joyeria-frontend|lumiere-db"} > 30
+        for: 15s
+        labels:
+          severity: critical
+          area: "Infraestructura, Red y Contenedores"
+          job: cadvisor
+        annotations:
+          summary: "Contenedor de servicio crítico no disponible"
+          description: "El contenedor {{ $labels.name }} ha dejado de emitir métricas por más de 30 segundos."
+
+      - alert: HostHighCpuUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100) > 85
+        for: 1m
+        labels:
+          severity: warning
+          area: "Infraestructura, Red y Contenedores"
+          job: node-exporter
+        annotations:
+          summary: "Alto consumo de CPU en el nodo host"
+          description: "La utilización de CPU en la instancia {{ $labels.instance }} supera el 85% continuo."
+
+      # 3. Seguridad Informática (Categoría ITIL: Seguridad Informática y Vulnerabilidades)
+      - alert: SecurityUnauthorizedAccessSpike
+        expr: rate(http_requests_total{status="401"}[1m]) > 10
+        for: 30s
+        labels:
+          severity: critical
+          area: "Seguridad Informática y Vulnerabilidades"
+          job: backend
+        annotations:
+          summary: "Pico anómalo de peticiones HTTP 401 no autorizadas"
+          description: "Posible ataque de fuerza bruta o escaneo de credenciales detectado en las APIs de autenticación."

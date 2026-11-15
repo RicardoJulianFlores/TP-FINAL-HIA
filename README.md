@@ -78,6 +78,27 @@ cd glpi
 ```
 - Acceso Web: http://localhost:8086 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
 - API REST: http://localhost:8086/apirest.php (App-Token configurado para n8n).
+
+---
+
+## Automatización y Flujo 1 n8n: Alerta Prometheus ➔ Creación de Ticket en GLPI ➔ Notificación (JOY-30)
+
+Pipeline automatizado en n8n que recibe alertas de observabilidad (Prometheus Alertmanager / Grafana) mediante un webhook seguro, categoriza la incidencia según las directrices ITIL, crea el ticket en la mesa de ayuda GLPI asignado al responsable de infraestructura (`mchambi`), notifica al equipo y maneja errores ante contingencias de red.
+
+- **Documentación Completa:** [monitoring/n8n/README.md](monitoring/n8n/README.md)
+- **Definición del Flujo n8n:** [monitoring/n8n/workflows/flujo-1-alerta-prometheus-glpi.json](monitoring/n8n/workflows/flujo-1-alerta-prometheus-glpi.json)
+- **Reglas de Alerta Prometheus:** [monitoring/rules/alert_rules.yml](monitoring/rules/alert_rules.yml)
+- **Configuración Alertmanager:** [monitoring/alertmanager.yml](monitoring/alertmanager.yml)
+- **Provisioning Grafana Alerting:** [monitoring/grafana/provisioning/alerting/contactpoints.yml](monitoring/grafana/provisioning/alerting/contactpoints.yml)
+
+### Despliegue y Pruebas del Flujo n8n
+```bash
+# 1. Importar y publicar el workflow en n8n automáticamente
+./scripts/import-n8n-workflow.sh
+
+# 2. Ejecutar la suite de validación completa (8 pruebas automatizadas)
+./scripts/test-alerta-n8n-glpi.sh
+```
 # Procedimiento Operativo Estándar: Rollback y Recuperación ante Fallos
 
 ## 1. Detección del Incidente

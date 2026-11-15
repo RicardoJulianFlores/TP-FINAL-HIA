@@ -10,8 +10,20 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
     ports:
       - "9090:9090"
+    networks:
+      - admin-net
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: lumiere-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
     networks:
       - admin-net
 
@@ -39,12 +51,23 @@ services:
     restart: unless-stopped
     ports:
       - "5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - GENERIC_TIMEZONE=America/Argentina/Jujuy
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_RUNNERS_ENABLED=false
+      - GLPI_BASE_URL=http://lumiere-glpi/apirest.php
+      - GLPI_APP_TOKEN=LumiereN8NAppToken2026SecureKeyJOY30
+      - GLPI_USER=mchambi
+      - GLPI_PASSWORD=Lumiere2026!
+      - WEBHOOK_AUTH_TOKEN=LumiereWebhookSecret2026!
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./monitoring/n8n/workflows:/data/workflows:ro
     networks:
       - admin-net
   cadvisor:

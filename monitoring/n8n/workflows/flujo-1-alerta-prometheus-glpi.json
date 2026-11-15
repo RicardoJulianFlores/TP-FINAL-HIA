@@ -1,0 +1,596 @@
+{
+  "name": "Flujo 1: Alerta Prometheus -> Ticket GLPI -> Notificación",
+  "nodes": [
+    {
+      "webhookId": "alerta-prometheus-uuid",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerta-prometheus",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        200
+      ],
+      "id": "node-webhook-trigger",
+      "name": "Webhook Alerta Prometheus"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const headers = $input.item.json.headers || {};\nconst tokenHeader = headers['x-webhook-token'] || headers['X-Webhook-Token'] || '';\nconst authHeader = headers['authorization'] || headers['Authorization'] || '';\nconst expectedSecret = 'LumiereWebhookSecret2026!';\n\nlet isAuthorized = false;\nif (tokenHeader === expectedSecret) {\n  isAuthorized = true;\n} else if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === expectedSecret) {\n  isAuthorized = true;\n}\n\nreturn {\n  json: {\n    is_authorized: isAuthorized,\n    raw_body: $input.item.json.body || {},\n    headers: headers\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -380,
+        200
+      ],
+      "id": "node-validar-auth",
+      "name": "Validar Autenticacion"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-auth",
+              "leftValue": "={{ $json.is_authorized }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        200
+      ],
+      "id": "node-if-auth",
+      "name": "If Autenticado"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"error\",\n  \"code\": 401,\n  \"message\": \"Acceso no autorizado: la cabecera 'X-Webhook-Token' o 'Authorization: Bearer' no coincide con el secreto configurado.\"\n}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        380
+      ],
+      "id": "node-resp-401",
+      "name": "Respuesta 401 No Autorizado"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $input.item.json.raw_body || {};\n\nlet alert = null;\nlet status = raw.status || raw.state || 'firing';\n\nif (Array.isArray(raw.alerts) && raw.alerts.length > 0) {\n  alert = raw.alerts.find(a => (a.status || 'firing') === 'firing') || raw.alerts[0];\n} else if (raw.alertname || (raw.labels && raw.labels.alertname)) {\n  alert = raw;\n} else if (raw.title && (raw.state || raw.message)) {\n  alert = {\n    labels: { alertname: raw.title, severity: 'warning' },\n    annotations: { summary: raw.title, description: raw.message || raw.title }\n  };\n}\n\nif (!alert) {\n  return {\n    json: {\n      is_valid: false,\n      error_message: \"Estructura de payload inválida: no se encontró ninguna alerta válida o el array 'alerts' está vacío.\"\n    }\n  };\n}\n\nconst labels = alert.labels || {};\nconst annotations = alert.annotations || {};\n\nconst alertname = labels.alertname || raw.commonLabels?.alertname || raw.groupLabels?.alertname || alert.alertname || raw.title || 'Alerta-Sin-Nombre';\nconst severity = (labels.severity || raw.commonLabels?.severity || 'warning').toLowerCase();\nconst instance = labels.instance || labels.host || 'infraestructura-lumiere';\nconst job = labels.job || 'lumiere-monitoring';\nconst areaLabel = labels.area || labels.categoria || '';\nconst summary = annotations.summary || raw.commonAnnotations?.summary || alert.summary || raw.title || alertname;\nconst description = annotations.description || raw.commonAnnotations?.description || alert.description || raw.message || 'Sin descripción detallada disponible.';\nconst startsAt = alert.startsAt || new Date().toISOString();\n\nlet categoryId = 4;\nlet categoryName = 'Alertas Automáticas (Prometheus / n8n)';\n\nconst textToAnalyze = `${alertname} ${summary} ${description} ${job} ${areaLabel}`.toLowerCase();\n\nif (areaLabel.toLowerCase().includes('seguridad') || /owasp|trivy|token|jwt|auth|security|vulnerab|unauthorized|ataque|pass/i.test(textToAnalyze)) {\n  categoryId = 1;\n  categoryName = 'Seguridad Informática y Vulnerabilidades';\n} else if (areaLabel.toLowerCase().includes('rendimiento') || /postgres|database|db|latency|latencia|query|lenta|wal|replic|replica|sql|pool/i.test(textToAnalyze)) {\n  categoryId = 2;\n  categoryName = 'Rendimiento y Base de Datos';\n} else if (areaLabel.toLowerCase().includes('infraestructura') || /container|contenedor|docker|cadvisor|node|cpu|memoria|memory|disco|disk|tunnel|cloudflare|host|red|down|fail/i.test(textToAnalyze)) {\n  categoryId = 3;\n  categoryName = 'Infraestructura, Red y Contenedores';\n}\n\nlet urgency = 3;\nlet impact = 3;\nlet priority = 3;\n\nif (severity === 'critical' || severity === 'fatal') {\n  urgency = 5;\n  impact = 5;\n  priority = 5;\n} else if (severity === 'warning' || severity === 'high') {\n  urgency = 4;\n  impact = 4;\n  priority = 4;\n} else if (severity === 'medium') {\n  urgency = 3;\n  impact = 3;\n  priority = 3;\n} else {\n  urgency = 2;\n  impact = 2;\n  priority = 2;\n}\n\nconst ticketName = `[PROMETHEUS] ${alertname} - ${summary.slice(0, 80)}`;\nconst ticketContent = `&lt;h3&gt;Alerta Automática de Infraestructura - Joyería Lumière&lt;/h3&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Alerta:&lt;/strong&gt; ${alertname}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Severidad:&lt;/strong&gt; ${severity.toUpperCase()}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Instancia / Host:&lt;/strong&gt; ${instance}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Origen / Job:&lt;/strong&gt; ${job}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Fecha y Hora de Detección:&lt;/strong&gt; ${startsAt}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Área Asignada (ITIL):&lt;/strong&gt; ${categoryName}&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Resumen:&lt;/strong&gt; ${summary}&lt;/p&gt;` +\n  `&lt;p&gt;&lt;strong&gt;Detalle Técnico:&lt;/strong&gt;&lt;br/&gt;&lt;pre&gt;${description}&lt;/pre&gt;&lt;/p&gt;` +\n  `&lt;hr/&gt;` +\n  `&lt;p&gt;&lt;small&gt;Ticket generado automáticamente por el flujo n8n (JOY-30). Responsable técnico asignado: Marcos Chambi (SRE).&lt;/small&gt;&lt;/p&gt;`;\n\nreturn {\n  json: {\n    is_valid: true,\n    alertname,\n    severity,\n    instance,\n    job,\n    summary,\n    description,\n    startsAt,\n    category_id: categoryId,\n    category_name: categoryName,\n    urgency,\n    impact,\n    priority,\n    assigned_user_id: 7,\n    ticket_name: ticketName,\n    ticket_content: ticketContent\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        100
+      ],
+      "id": "node-procesar-alerta",
+      "name": "Validar y Procesar Alerta"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        300,
+        100
+      ],
+      "id": "node-if-payload",
+      "name": "If Payload Valido"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"code\": 400,\n  \"message\": {{ JSON.stringify($json.error_message || 'Payload JSON inválido para procesamiento de alertas.') }}\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        280
+      ],
+      "id": "node-resp-400",
+      "name": "Respuesta 400 Payload Invalido"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-glpi/apirest.php/initSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+            },
+            {
+              "name": "Authorization",
+              "value": "Basic bWNoYW1iaTpMdW1pZXJlMjAyNiE="
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        40
+      ],
+      "id": "node-glpi-init-session",
+      "name": "GLPI Init Session",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-session",
+              "leftValue": "={{ Boolean($json.session_token) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        740,
+        40
+      ],
+      "id": "node-if-session",
+      "name": "If Sesion GLPI Creada"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://lumiere-glpi/apirest.php/Ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": {\n    \"name\": {{ JSON.stringify($('Validar y Procesar Alerta').item.json.ticket_name) }},\n    \"content\": {{ JSON.stringify($('Validar y Procesar Alerta').item.json.ticket_content) }},\n    \"type\": 1,\n    \"urgency\": {{ $('Validar y Procesar Alerta').item.json.urgency }},\n    \"impact\": {{ $('Validar y Procesar Alerta').item.json.impact }},\n    \"priority\": {{ $('Validar y Procesar Alerta').item.json.priority }},\n    \"itilcategories_id\": {{ $('Validar y Procesar Alerta').item.json.category_id }},\n    \"_users_id_assign\": {{ $('Validar y Procesar Alerta').item.json.assigned_user_id }}\n  }\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        -40
+      ],
+      "id": "node-glpi-create-ticket",
+      "name": "GLPI Create Ticket",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-ticket",
+              "leftValue": "={{ Boolean($json.id) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        -40
+      ],
+      "id": "node-if-ticket",
+      "name": "If Ticket Creado"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-glpi/apirest.php/killSession",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "LumiereN8NAppToken2026SecureKeyJOY30"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $('GLPI Init Session').item.json.session_token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        -140
+      ],
+      "id": "node-glpi-kill-session",
+      "name": "GLPI Kill Session",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const alertData = $('Validar y Procesar Alerta').item.json;\nconst ticketId = $('GLPI Create Ticket').item.json.id;\nconst glpiHost = 'http://localhost:8086';\nconst glpiTicketUrl = `${glpiHost}/front/ticket.form.php?id=${ticketId}`;\n\nconst messageText = `🚨 *INCIDENTE DETECTADO Y TICKET GLPI CREADO* 🚨\\n\\n` +\n  `• *Ticket ID:* #${ticketId}\\n` +\n  `• *Alerta:* ${alertData.alertname}\\n` +\n  `• *Severidad:* ${alertData.severity.toUpperCase()} (Prioridad ${alertData.priority}/5)\\n` +\n  `• *Área ITIL:* ${alertData.category_name}\\n` +\n  `• *Instancia:* ${alertData.instance}\\n` +\n  `• *Resumen:* ${alertData.summary}\\n` +\n  `• *Detalle:* ${alertData.description}\\n` +\n  `• *Enlace GLPI:* ${glpiTicketUrl}\\n` +\n  `• *Fecha/Hora:* ${new Date().toISOString()}`;\n\nreturn {\n  json: {\n    ticket_id: ticketId,\n    alertname: alertData.alertname,\n    severity: alertData.severity,\n    category_name: alertData.category_name,\n    priority: alertData.priority,\n    instance: alertData.instance,\n    summary: alertData.summary,\n    glpi_url: glpiTicketUrl,\n    message_text: messageText,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        60
+      ],
+      "id": "node-formatear-notif",
+      "name": "Formatear Notificacion Exito"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:9999/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ticket_id\": {{ $json.ticket_id }},\n  \"alertname\": {{ JSON.stringify($json.alertname) }},\n  \"severity\": {{ JSON.stringify($json.severity) }},\n  \"category\": {{ JSON.stringify($json.category_name) }},\n  \"priority\": {{ $json.priority }},\n  \"message\": {{ JSON.stringify($json.message_text) }},\n  \"glpi_url\": {{ JSON.stringify($json.glpi_url) }}\n}",
+        "options": {
+          "timeout": 1500
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1620,
+        60
+      ],
+      "id": "node-enviar-notif",
+      "name": "Enviar Notificacion Equipo",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Incidencia registrada y asignada exitosamente en GLPI.\",\n  \"ticket_id\": {{ $('Formatear Notificacion Exito').item.json.ticket_id }},\n  \"alertname\": {{ JSON.stringify($('Formatear Notificacion Exito').item.json.alertname) }},\n  \"category\": {{ JSON.stringify($('Formatear Notificacion Exito').item.json.category_name) }},\n  \"priority\": {{ $('Formatear Notificacion Exito').item.json.priority }},\n  \"glpi_url\": {{ JSON.stringify($('Formatear Notificacion Exito').item.json.glpi_url) }}\n}",
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1840,
+        60
+      ],
+      "id": "node-resp-201",
+      "name": "Respuesta 201 Ticket Creado"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let alertData = { alertname: 'Desconocida', severity: 'warning', instance: 'infraestructura-lumiere', summary: 'Falla en servicio GLPI' };\ntry {\n  const candidate = $('Validar y Procesar Alerta').item.json;\n  if (candidate && candidate.alertname) alertData = candidate;\n} catch (e) {}\n\nconst alertname = alertData.alertname || 'Alerta No Identificada';\nconst severity = (alertData.severity || 'warning').toUpperCase();\nconst instance = alertData.instance || 'infraestructura-lumiere';\nconst summary = alertData.summary || 'Falla en el pipeline de gestión de incidentes';\nconst errorMsg = $json.error || $json.message || $json || 'Servicio GLPI no disponible o error en API REST';\n\nconst emergencyMessage = `🚨 *FALLO CRÍTICO DE GESTIÓN DE INCIDENTES* 🚨\\n\\n` +\n  `⚠️ *NO SE PUDO CREAR EL TICKET EN GLPI*\\n` +\n  `• *Alerta:* ${alertname}\\n` +\n  `• *Severidad:* ${severity}\\n` +\n  `• *Instancia:* ${instance}\\n` +\n  `• *Resumen:* ${summary}\\n` +\n  `• *Causa de la Falla:* Servicio GLPI inaccesible o credenciales rechazadas\\n` +\n  `• *Detalle Error:* ${JSON.stringify(errorMsg)}\\n` +\n  `• *Acción Requerida:* Atender el incidente manualmente y verificar contenedor lumiere-glpi.`;\n\nreturn {\n  json: {\n    emergency: true,\n    alertname,\n    severity,\n    error_detail: errorMsg,\n    message_text: emergencyMessage\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        220
+      ],
+      "id": "node-manejo-error-glpi",
+      "name": "Manejo Error GLPI"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:9999/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"emergency\": true,\n  \"alertname\": {{ JSON.stringify($json.alertname) }},\n  \"severity\": {{ JSON.stringify($json.severity) }},\n  \"error\": {{ JSON.stringify($json.error_detail) }},\n  \"message\": {{ JSON.stringify($json.message_text) }}\n}",
+        "options": {
+          "timeout": 1500
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1180,
+        220
+      ],
+      "id": "node-notif-error-glpi",
+      "name": "Enviar Notificacion Emergencia",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"code\": 502,\n  \"message\": \"El servicio GLPI no está disponible para registrar la incidencia. Se ha emitido notificación de contingencia al equipo.\",\n  \"alert\": {{ JSON.stringify($('Manejo Error GLPI').item.json.alertname) }},\n  \"error_detail\": {{ JSON.stringify($('Manejo Error GLPI').item.json.error_detail) }}\n}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1400,
+        220
+      ],
+      "id": "node-resp-502",
+      "name": "Respuesta 502 GLPI Inaccesible"
+    }
+  ],
+  "connections": {
+    "Webhook Alerta Prometheus": {
+      "main": [
+        [
+          {
+            "node": "Validar Autenticacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Autenticacion": {
+      "main": [
+        [
+          {
+            "node": "If Autenticado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Autenticado": {
+      "main": [
+        [
+          {
+            "node": "Validar y Procesar Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta 401 No Autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar y Procesar Alerta": {
+      "main": [
+        [
+          {
+            "node": "If Payload Valido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Payload Valido": {
+      "main": [
+        [
+          {
+            "node": "GLPI Init Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta 400 Payload Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI Init Session": {
+      "main": [
+        [
+          {
+            "node": "If Sesion GLPI Creada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Sesion GLPI Creada": {
+      "main": [
+        [
+          {
+            "node": "GLPI Create Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Manejo Error GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI Create Ticket": {
+      "main": [
+        [
+          {
+            "node": "If Ticket Creado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Ticket Creado": {
+      "main": [
+        [
+          {
+            "node": "GLPI Kill Session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Formatear Notificacion Exito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Manejo Error GLPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Notificacion Exito": {
+      "main": [
+        [
+          {
+            "node": "Enviar Notificacion Equipo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Notificacion Equipo": {
+      "main": [
+        [
+          {
+            "node": "Respuesta 201 Ticket Creado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manejo Error GLPI": {
+      "main": [
+        [
+          {
+            "node": "Enviar Notificacion Emergencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Notificacion Emergencia": {
+      "main": [
+        [
+          {
+            "node": "Respuesta 502 GLPI Inaccesible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}
