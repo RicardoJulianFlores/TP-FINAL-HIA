@@ -6,9 +6,7 @@ CREATE INDEX IF NOT EXISTS idx_detalles_producto ON detalles ("productoId");
 CREATE INDEX IF NOT EXISTS idx_pagos_pedido     ON pagos    ("pedidoId");
 CREATE INDEX IF NOT EXISTS idx_accesos_usuario  ON accesos  ("usuarioId");
 
--- ==========================================
 -- JOY-22: Índices de Optimización (Sprint 2)
--- ==========================================
 
 -- 1. Búsqueda compuesta en catálogo
 CREATE INDEX idx_productos_filtro_catalogo ON public.productos (categoria, material, precio);
