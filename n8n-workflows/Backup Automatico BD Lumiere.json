@@ -1,0 +1,322 @@
+{
+  "name": "Backup Automatico BD Lumiere",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3,
+              "triggerAtMinute": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f667367a-b65d-49e1-9b97-89187e84c4e1",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "path": "=/09-Backups-DB/backup_trabajoFinal_{{ $now.toFormat('yyyy-MM-dd') }}.sql.gz",
+        "binaryDataUpload": true
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        -128
+      ],
+      "id": "3e89719e-a75a-408f-a08f-82bedb1d2a65",
+      "name": "Upload a file",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "FECHA=$(date +%Y-%m-%d)\nARCHIVO=\"/backups/backup_trabajoFinal_${FECHA}.sql.gz\"\nUMBRAL_MINIMO=500\n\nif [ ! -f \"$ARCHIVO\" ]; then\n  echo \"{\\\"ok\\\": false, \\\"estado\\\": \\\"FALTANTE\\\", \\\"archivo\\\": \\\"$ARCHIVO\\\", \\\"tamano_bytes\\\": 0, \\\"detalle\\\": \\\"No se encontro el archivo de respaldo diario.\\\"}\"\n  exit 0\nfi\n\nTAMANO=$(stat -c%s \"$ARCHIVO\")\n\nif ! gzip -t \"$ARCHIVO\" 2>/dev/null; then\n  echo \"{\\\"ok\\\": false, \\\"estado\\\": \\\"CORRUPTO\\\", \\\"archivo\\\": \\\"$ARCHIVO\\\", \\\"tamano_bytes\\\": $TAMANO, \\\"detalle\\\": \\\"Fallo la validacion de integridad gzip -t.\\\"}\"\n  exit 0\nfi\n\nif [ \"$TAMANO\" -lt \"$UMBRAL_MINIMO\" ]; then\n  echo \"{\\\"ok\\\": false, \\\"estado\\\": \\\"TAMANO_INSUFICIENTE\\\", \\\"archivo\\\": \\\"$ARCHIVO\\\", \\\"tamano_bytes\\\": $TAMANO, \\\"detalle\\\": \\\"El archivo pesa menos del umbral minimo esperado ($UMBRAL_MINIMO bytes).\\\"}\"\n  exit 0\nfi\n\necho \"{\\\"ok\\\": true, \\\"estado\\\": \\\"VALIDO\\\", \\\"archivo\\\": \\\"$ARCHIVO\\\", \\\"tamano_bytes\\\": $TAMANO, \\\"detalle\\\": \\\"Respaldo integro y verificado correctamente.\\\"}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7182fba9-e38b-4402-b747-20ef041eecb0",
+      "name": "Execute Command"
+    },
+    {
+      "parameters": {
+        "jsCode": "const salida = $input.first().json.stdout;\nconst datos = JSON.parse(salida);\nreturn [{ json: datos }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "d1a783c5-f989-417b-b672-2a989fe6ad15",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "e8927fdd-ac09-401d-ab93-3b455cb863a0",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        672,
+        0
+      ],
+      "id": "d907b782-bbe5-4831-842a-3091803955ff",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.archivo }}",
+        "options": {
+          "dataPropertyName": "data"
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        -128
+      ],
+      "id": "03be1b63-b62b-40b8-88fc-47bd958e8c74",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "path": "=/09-Backups-DB/auditoria-backup-{{ $now.toFormat('yyyy-MM-dd') }}.md",
+        "fileContent": "=# Auditoría Diaria de Respaldo - Joyería Lumière\n- **Fecha:** {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- **Estado:** {{ $('Code in JavaScript').item.json.estado }}\n- **Archivo:** {{ $('Code in JavaScript').item.json.archivo }}\n- **Tamaño:** {{ $('Code in JavaScript').item.json.tamano_bytes }} bytes\n- **Resultado:** {{ $('Code in JavaScript').item.json.detalle }}"
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        -128
+      ],
+      "id": "f5be6ea0-e4c2-4f2a-a5dd-2b4ec5436fa9",
+      "name": "Upload a file1",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "=/08-Reportes-Incidentes/alerta-backup-{{ $now.toFormat('yyyy-MM-dd_HH-mm') }}.md",
+        "fileContent": "=# ALERTA CRÍTICA DE RESPALDO - Joyería Lumière\n- **Fecha:** {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- **Estado:** {{ $json.estado }}\n- **Diagnóstico:** {{ $json.detalle }}"
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        912,
+        144
+      ],
+      "id": "907d111f-cb60-4b43-8e8c-e004b8a0ecab",
+      "name": "Upload a file2",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "duranjosue11@gmail.com",
+        "toEmail": "josueduran154@gmail.com",
+        "subject": "=✅ [OK] Backup Diario BD Joyería Lumière - {{ $now.toFormat('dd/MM/yyyy') }}",
+        "emailFormat": "=text",
+        "text": "=AUDITORÍA DE RESPALDO EXITOSA - JOYERÍA LUMIÈRE\n\nEl respaldo diario de la base de datos se generó, validó y almacenó correctamente en Nextcloud.\n\n- Fecha y hora: {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- Estado: {{ $('Code in JavaScript').item.json.estado }}\n- Archivo: {{ $('Code in JavaScript').item.json.archivo }}\n- Tamaño verificado: {{ $('Code in JavaScript').item.json.tamano_bytes }} bytes\n- Integridad GZIP: Aprobada (gzip -t OK)\n- Carpeta Nextcloud: /09-Backups-DB/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1520,
+        -128
+      ],
+      "id": "bb2000e3-1f54-471b-bb4d-50a5bb91e60f",
+      "name": "Send an Email",
+      "webhookId": "6683167b-7207-40e0-8ca1-a38207b6e079",
+      "credentials": {
+        "smtp": {
+          "id": "n1IksGP9gXr4aHxl",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "duranjosue11@gmail.com",
+        "toEmail": "josueduran154@gmail.com",
+        "subject": "=🚨 [CRÍTICO] Fallo en Backup BD Joyería Lumière ({{ $('Code in JavaScript').item.json.estado }})",
+        "emailFormat": "=text",
+        "text": "=ALERTA CRÍTICA DE RESPALDO - JOYERÍA LUMIÈRE\n\nSe detectó un problema durante la auditoría automática del respaldo diario de PostgreSQL.\n\n- Fecha y hora: {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- Estado detectado: {{ $('Code in JavaScript').item.json.estado }}\n- Archivo evaluado: {{ $('Code in JavaScript').item.json.archivo }}\n- Tamaño detectado: {{ $('Code in JavaScript').item.json.tamano_bytes }} bytes\n- Diagnóstico: {{ $('Code in JavaScript').item.json.detalle }}\n\nSe registró el reporte de incidente en Nextcloud (/03-Reportes-Incidentes/). Requiere revisión inmediata.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1136,
+        144
+      ],
+      "id": "fba10bf2-d2e9-47dd-8014-2bca23d2da38",
+      "name": "Send an Email1",
+      "webhookId": "59c57006-7b59-4466-807d-1b47d4f46b99",
+      "credentials": {
+        "smtp": {
+          "id": "n1IksGP9gXr4aHxl",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload a file2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        [
+          {
+            "node": "Upload a file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file1": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file2": {
+      "main": [
+        [
+          {
+            "node": "Send an Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1656e2f1-7cab-455c-a391-7e75c9a490a3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eb3d6074f778fe69136b02856b9a645cba4a3731fbea596e4f7c07a28fb9199a"
+  },
+  "nodeGroups": [],
+  "id": "lBGNOBcWxixYpTmg",
+  "tags": []
+}

@@ -1,0 +1,340 @@
+{
+  "name": "Reportes Automáticos de Incidentes",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alertas-lumiere",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        -64
+      ],
+      "id": "be1193a7-7f72-46fa-99ce-39f96f4022fa",
+      "name": "Webhook",
+      "webhookId": "347d12a8-5a82-4fd7-b9ba-52a193699c77",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WejRwC89NXUHNBED",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "=/08-Reportes-Incidentes/incidente-{{ $now.toFormat('yyyy-MM-dd_HH-mm-ss') }}.md",
+        "fileContent": "=# Incidente Registrado en GLPI - Joyería Lumière\n- **ID Ticket GLPI:** #{{ $json.id }}\n- **Fecha:** {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- **Área / Categoría ITIL:** {{ $('Code in JavaScript').item.json.areaNombre }}\n- **Título:** {{ $('Code in JavaScript').item.json.titulo }}\n- **Detalle:**\n{{ $('Code in JavaScript').item.json.descripcion }}"
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        448,
+        -64
+      ],
+      "id": "95a34ed6-dca9-4036-b1eb-c58d3c9905de",
+      "name": "Upload a file",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\n// 1. Validar estructura JSON de Grafana / Alertmanager\nif (!body || !Array.isArray(body.alerts) || body.alerts.length === 0) {\n  return [{ json: { valido: false, motivo: \"Payload JSON inválido: falta el arreglo 'alerts'.\" } }];\n}\n\n// 2. Procesar únicamente alertas activas ('firing')\nif (body.status && body.status !== 'firing') {\n  return [{ json: { valido: false, motivo: `Alerta ignorada (estado: ${body.status}).` } }];\n}\n\nconst alerta = body.alerts[0];\nconst labels = alerta.labels || {};\nconst annotations = alerta.annotations || {};\n\nconst nombreAlerta = labels.alertname || \"Incidente Automatizado\";\nconst severidad = (labels.severity || \"warning\").toLowerCase();\nconst servicio = labels.job || labels.container || labels.instance || \"Infraestructura\";\nconst resumen = annotations.summary || annotations.description || \"Alerta disparada desde monitoreo sin descripción adicional.\";\nconst textoCompleto = `${nombreAlerta} ${servicio} ${resumen}`.toLowerCase();\n\n// 3. Asignar Categoría ITIL real de GLPI según el área afectada\nlet categoriaId = 4;\nlet areaNombre = \"Alertas Automáticas (Prometheus / n8n)\";\n\nif (textoCompleto.includes(\"jwt\") || textoCompleto.includes(\"owasp\") || textoCompleto.includes(\"mercadopago\") || textoCompleto.includes(\"seguridad\")) {\n  categoriaId = 1;\n  areaNombre = \"Seguridad Informática y Vulnerabilidades\";\n} else if (textoCompleto.includes(\"postgres\") || textoCompleto.includes(\"db\") || textoCompleto.includes(\"latencia\") || textoCompleto.includes(\"query\")) {\n  categoriaId = 2;\n  areaNombre = \"Rendimiento y Base de Datos\";\n} else if (textoCompleto.includes(\"docker\") || textoCompleto.includes(\"nginx\") || textoCompleto.includes(\"cloudflare\") || textoCompleto.includes(\"contenedor\")) {\n  categoriaId = 3;\n  areaNombre = \"Infraestructura, Red y Contenedores\";\n}\n\n// Urgencia GLPI: 5 = Muy alta (critical), 3 = Media (warning/info)\nconst urgencia = severidad === \"critical\" ? 5 : 3;\n\nreturn [{\n  json: {\n    valido: true,\n    titulo: `[${severidad.toUpperCase()}] ${nombreAlerta} (${servicio})`,\n    descripcion: `Área responsable: ${areaNombre}\\nServicio afectado: ${servicio}\\nSeveridad: ${severidad}\\nDetalle: ${resumen}\\nInicio: ${alerta.startsAt || new Date().toISOString()}`,\n    severidad,\n    servicio,\n    categoriaId,\n    areaNombre,\n    urgencia\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        -64
+      ],
+      "id": "df82a620-af80-41a7-b95b-36dbfa4dca69",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "a3f60eeb-909a-4436-9df7-298dc8f602b8",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        -272,
+        -64
+      ],
+      "id": "3ec7f9da-bade-413d-929f-8d068eb9d1a8",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://lumiere-glpi/apirest.php/Ticket",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "gzWxpeHNpGN3tXMRoqm1dkIaxt14MltAMgMbxz09"
+            },
+            {
+              "name": "Session-Token",
+              "value": "={{ $json.session_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    input: {\n      name: $('Code in JavaScript').item.json.titulo,\n      content: $('Code in JavaScript').item.json.descripcion,\n      type: 1,\n      urgency: $('Code in JavaScript').item.json.urgencia,\n      itilcategories_id: $('Code in JavaScript').item.json.categoriaId\n    }\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        176,
+        -160
+      ],
+      "id": "3158ef46-430a-4623-8c26-e40005378a62",
+      "name": "GLPI - Crear Ticket",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-glpi/apirest.php/initSession",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "App-Token",
+              "value": "gzWxpeHNpGN3tXMRoqm1dkIaxt14MltAMgMbxz09"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -48,
+        -64
+      ],
+      "id": "25abb725-3738-444c-aca3-4891233fc4d5",
+      "name": "GLPI - Iniciar Sesion",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "W3lwQbch63sTVVxz",
+          "name": "Unnamed credential"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "fromEmail": "duranjosue11@gmail.com",
+        "toEmail": "josueduran154@gmail.com",
+        "subject": "=🎫 [GLPI Ticket #{{ $('GLPI - Crear Ticket').item.json.id }}] {{ $('Code in JavaScript').item.json.titulo }}",
+        "emailFormat": "text",
+        "text": "=INCIDENTE REGISTRADO AUTOMÁTICAMENTE - JOYERÍA LUMIÈRE\n\nSe ha abierto una nueva incidencia en la mesa de ayuda GLPI:\n\n- ID del Ticket: #{{ $('GLPI - Crear Ticket').item.json.id }}\n- Enlace directo: http://localhost:8086/front/ticket.form.php?id={{ $('GLPI - Crear Ticket').item.json.id }}\n- Área asignada: {{ $('Code in JavaScript').item.json.areaNombre }}\n- Severidad: {{ $('Code in JavaScript').item.json.severidad }}\n\nDetalle del error:\n{{ $('Code in JavaScript').item.json.descripcion }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        -64
+      ],
+      "id": "65063f32-44b7-4dfe-9545-ccd87d41db36",
+      "name": "Send an Email",
+      "webhookId": "285213bd-d712-4a4e-8068-60870e5bb18a",
+      "credentials": {
+        "smtp": {
+          "id": "n1IksGP9gXr4aHxl",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "=/08-Reportes-Incidentes/incidente-{{ $now.toFormat('yyyy-MM-dd_HH-mm-ss') }}.md",
+        "fileContent": "=# ALERTA DE CONTINGENCIA: SERVICIO GLPI NO RESPONDE\n- **Fecha:** {{ $now.toFormat('dd/MM/yyyy HH:mm:ss') }}\n- **Incidente detectado:** {{ $('Code in JavaScript').item.json.titulo }}\n- **Área destino:** {{ $('Code in JavaScript').item.json.areaNombre }}\n- **Detalle de la alerta:** {{ $('Code in JavaScript').item.json.descripcion }}\n- **Error técnico de GLPI:** {{ $json.error?.message || \"Timeout o servicio GLPI inaccesible\" }}"
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        448,
+        128
+      ],
+      "id": "6ea50c38-dfb4-40b5-8cec-db1fc9e9cab6",
+      "name": "Upload a file1",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "duranjosue11@gmail.com",
+        "toEmail": "josueduran154@gmail.com",
+        "subject": "=⚠️ [GLPI CAÍDO] Incidente sin ticket: {{ $('Code in JavaScript').item.json.titulo }}",
+        "emailFormat": "text",
+        "text": "=ATENCIÓN: Se recibió una alerta de monitoreo pero la API de GLPI no respondió.\nEl incidente quedó resguardado en Nextcloud (/03-Reportes-Incidentes/).\n\n- Incidente: {{ $('Code in JavaScript').item.json.titulo }}\n- Área: {{ $('Code in JavaScript').item.json.areaNombre }}\n- Error técnico: {{ $json.error?.message || \"Servicio GLPI no disponible\" }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        128
+      ],
+      "id": "ac8e9e40-5c63-448d-a3d5-34e0d311a923",
+      "name": "Send an Email1",
+      "webhookId": "2b3462d0-e76a-4c7a-9ea2-5aa8dfd0e3a4",
+      "credentials": {
+        "smtp": {
+          "id": "n1IksGP9gXr4aHxl",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "GLPI - Iniciar Sesion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI - Crear Ticket": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload a file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI - Iniciar Sesion": {
+      "main": [
+        [
+          {
+            "node": "GLPI - Crear Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload a file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file1": {
+      "main": [
+        [
+          {
+            "node": "Send an Email1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b1deaf60-0de5-43ea-b847-a00398b3d2ed",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eb3d6074f778fe69136b02856b9a645cba4a3731fbea596e4f7c07a28fb9199a"
+  },
+  "nodeGroups": [],
+  "id": "B87FCAMnCyQnep6M",
+  "tags": []
+}

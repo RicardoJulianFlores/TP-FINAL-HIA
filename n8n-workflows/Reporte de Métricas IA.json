@@ -1,0 +1,339 @@
+{
+  "name": "Reporte de Métricas IA",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -112,
+        16
+      ],
+      "id": "15eb8e50-3314-4d58-a29f-994c40ec24a5",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1h])) * 100)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        -160
+      ],
+      "id": "501b6937-2d1c-428f-88a0-94b1a3127ac0",
+      "name": "Prometheus - CPU Historico"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "topk(5, container_memory_usage_bytes{name!=\"\"}) / 1024 / 1024"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        16
+      ],
+      "id": "3230e069-4956-4393-9a26-26acb5e0924d",
+      "name": "Prometheus - RAM Contenedores"
+    },
+    {
+      "parameters": {
+        "url": "http://lumiere-prometheus:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "pg_stat_database_numbackends"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        192
+      ],
+      "id": "6162d5ed-3f7c-4a9d-9130-980d9e47ec42",
+      "name": "Prometheus - Conexiones Postgres"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        464,
+        0
+      ],
+      "id": "30ee3f81-3051-4ad0-8038-3fab6f8fd4a7",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst cpuVal = items[0]?.json?.data?.result?.[0]?.value?.[1] || \"Sin datos\";\nconst ramResults = items[1]?.json?.data?.result || [];\nconst pgResults = items[2]?.json?.data?.result || [];\n\nconst ramDetalle = ramResults.map(r => {\n  const nombre = r.metric.name || \"contenedor\";\n  const mb = parseFloat(r.value[1]).toFixed(2);\n  return `- ${nombre}: ${mb} MB`;\n}).join('\\n');\n\nconst pgDetalle = pgResults.map(r => {\n  const db = r.metric.datname || \"postgres\";\n  return `- Base \"${db}\": ${r.value[1]} conexiones activas`;\n}).join('\\n');\n\nconst resumenMetricas = `\nFECHA DEL REPORTE: ${new Date().toISOString()}\n1. Uso promedio de CPU del host (última hora): ${parseFloat(cpuVal).toFixed(2)}%\n2. Top 5 contenedores por consumo de memoria RAM:\n${ramDetalle || \"- Sin métricas de cAdvisor\"}\n3. Estado de conexiones en PostgreSQL:\n${pgDetalle || \"- Sin métricas de Postgres\"}\n`.trim();\n\nreturn [{ json: { resumenMetricas } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        16
+      ],
+      "id": "0c8c1f85-a0b0-4173-b2d6-5129988c7a8b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-4-hydrogen",
+          "mode": "list",
+          "cachedResultName": "Gemini 4 Hydrogen"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Actuá como un Ingeniero SRE Senior encargado de la infraestructura Docker de \"Joyería Lumière\".\nAnalizá las siguientes métricas reales recolectadas desde Prometheus y redactá un informe técnico ejecutivo en formato Markdown puro.\n\nEl informe debe contener exactamente estas secciones:\n# Informe de Rendimiento y Capacidad - Joyería Lumière\n## 1. Resumen Ejecutivo del Estado\n## 2. Análisis de Métricas y Detección de Cuellos de Botella\n## 3. Recomendaciones Técnicas de Optimización\n\nMétricas recolectadas:\n{{ $json.resumenMetricas }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        16
+      ],
+      "id": "71336048-fce3-432d-b83a-e4d1255f3ffa",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YIehHqmxixNOeeWh",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const markdownText = $input.first().json.content?.parts?.[0]?.text \n  || $input.first().json.text \n  || JSON.stringify($input.first().json);\n\nconst fecha = new Date().toISOString().split('T')[0];\nconst fileName = `reporte-rendimiento-IA-${fecha}.md`;\n\nreturn [\n  {\n    json: {\n      fileName,\n      markdownText\n    },\n    binary: {\n      data: {\n        data: Buffer.from(markdownText, 'utf8').toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: fileName\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        16
+      ],
+      "id": "52a78ce8-6868-4d07-9d95-16caae660700",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "path": "=/05_Observabilidad_y_n8n/{{ $json.fileName }}",
+        "binaryDataUpload": true
+      },
+      "type": "n8n-nodes-base.nextCloud",
+      "typeVersion": 1,
+      "position": [
+        1536,
+        16
+      ],
+      "id": "19301f26-d015-4a51-9230-49d9dc8c2586",
+      "name": "Upload a file",
+      "credentials": {
+        "nextCloudApi": {
+          "id": "g5baBb3DJ5EGSnhq",
+          "name": "NextCloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "duranjosue11@gmail.com",
+        "toEmail": "josueduran154@gmail.com",
+        "subject": "📊 Reporte Automático de Rendimiento IA - Joyería Lumière",
+        "emailFormat": "text",
+        "text": "=Hola equipo,\n\nSe ha generado y respaldado automáticamente en Nextcloud (/04-Reportes-Rendimiento/{{ $('Code in JavaScript1').item.json.fileName }}) el análisis de rendimiento asistido por IA.\n\nResumen del informe generado:\n--------------------------------------------------\n{{ $('Code in JavaScript1').item.json.markdownText }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1776,
+        16
+      ],
+      "id": "5b82ea0a-d380-4917-8475-d3f9427c6575",
+      "name": "Send an Email",
+      "webhookId": "3d6c4d1d-8d91-4ded-99fd-8ead2def0329",
+      "credentials": {
+        "smtp": {
+          "id": "n1IksGP9gXr4aHxl",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prometheus - CPU Historico",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prometheus - RAM Contenedores",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prometheus - Conexiones Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prometheus - CPU Historico": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prometheus - RAM Contenedores": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Prometheus - Conexiones Postgres": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1f1bad1e-358f-425c-bd4d-32ea6f464194",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "eb3d6074f778fe69136b02856b9a645cba4a3731fbea596e4f7c07a28fb9199a"
+  },
+  "nodeGroups": [],
+  "id": "AjqzMf1F4CnLFgay",
+  "tags": []
+}
