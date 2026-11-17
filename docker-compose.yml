@@ -248,6 +248,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
       interval: 10s
