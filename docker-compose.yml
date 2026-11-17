@@ -203,7 +203,7 @@ services:
       - admin-net
 
   backend:
-    image: ${DOCKER_USERNAME}/lumiere-backend:${IMAGE_TAG:-latest}
+    
     build:
       context: ./backend
       dockerfile: Dockerfile
