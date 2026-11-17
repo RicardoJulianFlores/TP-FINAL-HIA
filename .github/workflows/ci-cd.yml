@@ -3,10 +3,10 @@ name: CI/CD Pipeline TP-FINAL-HIA Local
 on:
   push:
     branches:
-      - fix/CI-CD
+      - main
   pull_request:
     branches:
-      - fix/CI-CD
+      - main
 
 jobs:
   # ==========================================================
@@ -51,7 +51,7 @@ jobs:
   # ==========================================================
   build-and-push:
     needs: test-and-lint
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/CI-CD'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     steps:
       - name: Checkout del código
