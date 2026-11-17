@@ -125,6 +125,12 @@ jobs:
             "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
           ) | Set-Content -Path ".env"
 
+          # Limpiar cualquier salto de línea CRLF en todos los .sh copiados a F:\lumiere-test
+          Get-ChildItem -Path "$deployDir\db" -Filter "*.sh" -Recurse | ForEach-Object {
+            $content = [System.IO.File]::ReadAllText($_.FullName) -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($_.FullName, $content, (New-Object System.Text.UTF8Encoding $false))
+          }
+
           # 4. Descargar y levantar usando -p para aislar volúmenes, redes y contenedores
           docker compose -p $projectName pull backend frontend
           docker compose -p $projectName up -d --remove-orphans --wait --wait-timeout 90
