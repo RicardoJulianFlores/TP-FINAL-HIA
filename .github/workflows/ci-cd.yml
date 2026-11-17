@@ -121,6 +121,7 @@ jobs:
             "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
             "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
             "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+            "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
           ) | Set-Content -Path ".env"
 
           # 4. Descargar y levantar usando -p para aislar volúmenes, redes y contenedores
