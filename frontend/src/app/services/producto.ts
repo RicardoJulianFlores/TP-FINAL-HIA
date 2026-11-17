@@ -167,16 +167,20 @@ export class ProductoService {
     );
   }
 
-  getProductosPorCategoria(categoria: string): Observable<Producto[]> {
-    return this.http.get<Producto[]>(`${this.apiUrl}/categoria/${categoria}`);
+  getProductosPorCategoria(categoria: string, page = 1, limit = 12, conStock = true):
+    Observable<{ data: Producto[]; total: number; page: number; limit: number }> {
+    return this.http.get<{ data: Producto[]; total: number; page: number; limit: number }>(
+      `${this.apiUrl}/categoria/${categoria}`,
+      { params: { page, limit, conStock } }
+    );
   }
 
   getProductoPorId(id: number): Observable<Producto> {
     return this.http.get<Producto>(`${this.apiUrl}/${id}`);
   }
 
-  getDestacados(): Observable<Producto[]> {
-    return this.http.get<Producto[]>(`${this.apiUrl}/destacados`);
+  getDestacados(limit = 12): Observable<Producto[]> {
+    return this.http.get<Producto[]>(`${this.apiUrl}/destacados`, { params: { limit } });
   }
 
   addProducto(producto: Producto): Observable<any> {
