@@ -1,21 +1,15 @@
 #!/usr/bin/env bash
+# Restaura el dump masivo de 36.000.000 de registros (6M por tabla).
+# Uso:
+#   ./scripts/restaurar-dump.sh
+#   ./scripts/restaurar-dump.sh backups/lumiere-36m.dump --si
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BACKUP_FILE="backups/backup-6m.dump"
-
-if [ ! -f "$BACKUP_FILE" ]; then
-  echo "Error: No se encuentra el archivo $BACKUP_FILE en la raíz del proyecto." >&2
-  exit 1
+if command -v python3 >/dev/null 2>&1; then
+  PY=python3
+else
+  PY=python
 fi
 
-echo "=== 1. Copiando el respaldo al contenedor principal (lumiere-db) ==="
-docker cp "$BACKUP_FILE" lumiere-db:/tmp/backup.dump
-
-echo "=== 2. Restaurando los 36 millones de registros con pg_restore (Esto puede tardar unos minutos) ==="
-docker exec -t lumiere-db pg_restore -U postgres -d trabajoFinal --clean --if-exists /tmp/backup.dump
-
-echo "=== 3. Limpiando archivo temporal dentro del contenedor ==="
-docker exec -t lumiere-db rm /tmp/backup.dump
-
-echo "¡Restauración masiva completada con éxito!"
+exec "$PY" datos/restaurar_dump.py "$@"
