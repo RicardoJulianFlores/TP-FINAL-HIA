@@ -106,8 +106,6 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-console.log("Access Token:", process.env.ACCESS_TOKEN);
-
 //setting
 app.set('port', process.env.PORT || 3000);
 // Sincronizar Base de Datos y arrancar el servidor
