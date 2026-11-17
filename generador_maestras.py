@@ -1,16 +1,22 @@
-import csv
-import random
-import time
+"""
+OBSOLETO.
 
-print("Generando 6M de usuarios...")
-with open('usuarios.csv', 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    for i in range(1, 6000001):
-        writer.writerow([f"user_{i}", "$2b$10$NDiJz2/8aOstLupsbBND5esqaBRlGkTehqbTi.62MIda.iPmV6OUC", f"Nombre{i}", f"Apellido{i}", "Cliente", f"cliente{i}@mail.com"])
+Este script generaba 6.000.000 de productos sueltos (sin ids y con columnas
+que no coincidian con el esquema). Fue reemplazado por el generador unico:
 
-print("Generando 6M de productos...")
-with open('productos.csv', 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    for i in range(1, 6000001):
-        writer.writerow([f"Joya {i}", random.choice(['Anillos', 'Collares', 'Aros']), round(random.uniform(1000, 50000), 2), 0, random.choice(['Plata', 'Oro', 'Acero']), 'false', random.randint(1, 100)])
-print("Archivos listos.")
+    python datos/generar_datos.py
+
+Se mantiene solo para no romper enlaces o costumbres: al ejecutarlo se
+generan los 36.000.000 de registros completos y correctos.
+"""
+
+import os
+import subprocess
+import sys
+
+RAIZ = os.path.dirname(os.path.abspath(__file__))
+
+print("Aviso: generador_maestras.py quedo obsoleto.")
+print("Se ejecutara el generador unificado (36.000.000 de registros en 6 tablas).\n")
+
+sys.exit(subprocess.call([sys.executable, os.path.join(RAIZ, "datos", "generar_datos.py")] + sys.argv[1:]))

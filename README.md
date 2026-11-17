@@ -60,6 +60,30 @@ pgAdmin: http://localhost:5050 → iniciar sesión con `PGADMIN_EMAIL` / `PGADMI
 
 Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los suba a git (ya están en `.gitignore`) y guarde una copia fuera de esta máquina.
 
+## Carga masiva (36.000.000 de registros: 6M por tabla)
+
+Guía completa: **[datos/README.md](datos/README.md)**.
+
+```bash
+docker compose up -d db db-replica pgadmin
+python datos/generar_datos.py                  # crea datos/csv (36M de filas, 3,7 GB)
+python datos/cargar_datos.py --sin-indices     # carga con COPY (sin índices analíticos, ~21 min)
+python datos/crear_dump.py                     # crea backups/lumiere-36m.dump (830 MB, ~4 min)
+```
+
+Los índices de consulta se crean después, cuando la carga ya terminó:
+
+```bash
+python datos/cargar_datos.py --solo-indices
+```
+
+Los compañeros solo necesitan el dump y ejecutar `RESTAURAR_DATOS.bat`
+(Windows) o `python datos/restaurar_dump.py` (Linux/macOS).
+
+> El antiguo `backups/backup-6m.dump` (21 KB) es un dump de esquema vacío y
+> **no** contiene los 6 millones de registros. Use el que genera
+> `datos/crear_dump.py`.
+
 ## Notas
 
 - `db/init/` solo se ejecuta cuando el volumen está vacío. Si cambia el esquema, aplíquelo con SQL sobre la base o recree el volumen (`docker compose down -v`, **borra todos los datos**).
@@ -108,3 +132,111 @@ Si la aplicación no responde y el pipeline tarda demasiado en compilar:
    docker logs app-prod > error_logs_$(date +%F).log
 2. Analizar el log en búsqueda de dependencias faltantes, errores de migración de base de datos o fallos de variables de entorno.
 3. Incorporar una nueva prueba unitaria o de integración en el pipeline que replique la falla para prevenir su reaparición futura.
+
+
+---
+
+## Clúster de Base de Datos: Topología Maestro-Esclavo (Primario + Réplica)
+
+Se configuró una arquitectura de alta disponibilidad y segregación de lectura/escritura mediante **Streaming Replication** física nativa de PostgreSQL 17:
+- **Nodo Primario (`lumiere-db`):** Responsable de las transacciones de escritura (`INSERT`, `UPDATE`, `DELETE`, DDL). Genera los registros WAL (*Write-Ahead Logging*) y los transmite mediante un replication slot (`replica_slot`).
+- **Nodo Réplica (`lumiere-db-replica`):** Servidor en modo *Hot Standby* de solo lectura. Clona el estado inicial del primario vía `pg_basebackup` y se mantiene sincronizado en tiempo real.
+- **Backend (Express + Sequelize):** Pool de conexiones dual (`replication: { write: ..., read: [...] }`). Las consultas de lectura se derivan automáticamente a la réplica y las escrituras al nodo primario.
+- **Endpoint de Monitoreo:** `GET /api/health` reporta el estado y conectividad de ambos nodos del clúster.
+
+### Diagrama de Red y Topología del Clúster
+
+```mermaid
+flowchart TD
+    subgraph Host["Host Machine"]
+        Client["Navegador / Cliente API"]
+    end
+
+    subgraph AdminNet["Docker Network: admin-net (Bridge)"]
+        Frontend["Frontend: joyeria-frontend (Port 8080:80)"]
+        Backend["Backend API: joyeria-backend (Port 3000:3000)"]
+        PgAdmin["pgAdmin 4: lumiere-pgadmin (Port 127.0.0.1:5050:80)"]
+        Tunnel["Cloudflare Tunnel: joyeria-tunnel"]
+    end
+
+    subgraph DbNet["Docker Network: db-net (internal: true)"]
+        Primary["DB Primario: lumiere-db (5432/tcp) - ESCRITURA"]
+        Replica["DB Réplica: lumiere-db-replica (5432/tcp) - LECTURA"]
+        VolPrimary[("Volumen: lumiere_pgdata")]
+        VolReplica[("Volumen: lumiere_pgdata_replica")]
+    end
+
+    Client -->|HTTP 8080| Frontend
+    Client -->|HTTP 3000| Backend
+    Client -->|HTTP 5050| PgAdmin
+
+    Frontend -->|HTTP /api| Backend
+    Tunnel --> Frontend
+
+    Backend -->|Sequelize Write / DDL: 5432| Primary
+    Backend -->|Sequelize Read: 5432| Replica
+
+    PgAdmin -->|Admin: 5432| Primary
+    PgAdmin -->|Admin: 5432| Replica
+
+    Primary -.->|Streaming Replication WAL / 5432 (Slot: replica_slot)| Replica
+    Primary --- VolPrimary
+    Replica --- VolReplica
+```
+
+### Matriz de Puertos y Servicios
+
+| Servicio | Contenedor | Redes | Puerto Interno | Puerto Host / Exposición | Rol |
+|---|---|---|---|---|---|
+| `db` | `lumiere-db` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Primario (Escritura y WAL streaming) |
+| `db-replica` | `lumiere-db-replica` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica (Hot Standby - Solo Lectura) |
+| `pgadmin` | `lumiere-pgadmin` | `db-net`, `admin-net` | 80/tcp | `127.0.0.1:5050` | Administrador visual de ambos nodos |
+| `backend` | `joyeria-backend` | `db-net`, `admin-net` | 3000/tcp | `0.0.0.0:3000` | API REST con dual-pool Sequelize |
+| `frontend` | `joyeria-frontend` | `admin-net` | 80/tcp | `0.0.0.0:8080` | SPA Angular + Nginx |
+
+### Script de Verificación Automática de Replicación
+
+Para validar la sincronización automática y la restricción de solo lectura:
+```bash
+chmod +x scripts/verificar-replicacion.sh
+./scripts/verificar-replicacion.sh
+```
+El script comprueba:
+1. Roles `pg_is_in_recovery()` (`f` para primario, `t` para réplica).
+2. Estado del canal WAL (`pg_stat_replication` y `pg_stat_wal_receiver`).
+3. Inserción de un registro en el primario y verificación de su lectura inmediata en la réplica.
+4. Rechazo de transacciones de escritura directa en la réplica (`read-only transaction`).
+
+---
+
+## Prueba de Fallo Controlado (Failover) y Alta Disponibilidad
+
+Se diseñó y validó una suite de prueba de fallo controlado para evaluar el comportamiento del sistema ante la caída inesperada del nodo primario (`lumiere-db`), midiendo los indicadores de resiliencia **RTO** (*Recovery Time Objective*) y **RPO** (*Recovery Point Objective*).
+
+### Resumen de Métricas de Resiliencia Obtenidas
+
+| Métrica | Objetivo de Diseño | Resultado Empírico | Comportamiento del Sistema |
+|---|---|---|---|
+| **RTO** (Tiempo de Recuperación) | $< 60$ s | **6 s a 26 s** | Restablecimiento total de escrituras sobre nuevo primario promovido |
+| **RPO** (Pérdida de Datos) | $0$ transacciones | **0 s (0 bytes)** | Cero pérdida de transacciones. Sincronía WAL completa |
+| **Persistencia tras Failback** | $100\%$ retención | **100% Preservado** | Transacciones post-failover sincronizadas sin pérdidas hacia el nodo original |
+| **Lecturas en Modo Degradado** | $100\%$ uptime | **HTTP 200 (0.004s)** | Despachadas sin interrupción por el nodo réplica |
+| **Escrituras durante la Caída** | Rechazo Atómico | **HTTP 400 (0.088s)** | Previene *split-brain* e incoherencias de datos |
+| **Promoción de Base de Datos** | $< 5$ s | **1.21 s a 3.96 s** | Promoción nativa con `SELECT pg_promote()` o `pg_ctl promote` |
+
+### Scripts Operativos de Failover y Restauración
+
+```bash
+# 1. Simulación Automatizada Completa de Fallo Controlado con auto-restauración y verificación de persistencia:
+./scripts/simular-failover.sh --restore
+
+# 2. Simulación utilizando el método alternativo de control pg_ctl:
+./scripts/simular-failover.sh --restore --method=pg_ctl
+
+# 3. Promoción asistida / semiautomática de la réplica a nuevo primario:
+./scripts/promover-replica.sh                 # Método SQL pg_promote()
+./scripts/promover-replica.sh --method=pg_ctl # Método de proceso pg_ctl
+
+# 4. Restauración de la topología base (lumiere-db primario y db-replica standby con preservación de datos):
+./scripts/restaurar-cluster.sh
+```

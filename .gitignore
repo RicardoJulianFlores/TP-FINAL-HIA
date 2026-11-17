@@ -1,5 +1,10 @@
 .env
 glpi/.env
 backups/*.sql
+backups/*.dump
+backups/*.dump.sha256
+backups/*.tmp
 backups/backup.log
-
+docs/
+datos/csv/
+__pycache__/

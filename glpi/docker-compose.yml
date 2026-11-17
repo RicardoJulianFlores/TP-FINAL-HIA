@@ -36,6 +36,7 @@ services:
         condition: service_healthy
     networks:
       - lumiere-net
+      - admin-net
 
 volumes:
   lumiere_glpi_db_data:
@@ -47,3 +48,6 @@ networks:
   lumiere-net:
     name: lumiere-ops-net
     driver: bridge
+  admin-net:
+    name: tp-final-hia_admin-net
+    external: true
