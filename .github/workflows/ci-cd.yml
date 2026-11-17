@@ -26,7 +26,7 @@ jobs:
             "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
             "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
             "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
-            "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN}}"
+            "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
           ) | Set-Content -Path .env
 
       - name: Validar sintaxis del docker-compose
@@ -141,6 +141,7 @@ jobs:
                 "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
                 "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
                 "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+                "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
               ) | Set-Content -Path ".env"
 
               docker compose -p $projectName up -d --remove-orphans
