@@ -49,7 +49,7 @@ HASH_ADMIN = "$2a$10$0tiF4q9bp89JRrORE519QO3zSymrzdFZWsw5Rg8.OH07O9vf1RIiS"
 HASH_CLIENTE = "$2a$10$7fZAXsHjU5ChPCsxQhKZbOW3.nNpsKY8M66TNWBxRf2vSjZbAn03."
 
 # Rangos / catalogos usados por el generador.
-CATEGORIAS = ["Anillos", "Collares", "Aros", "Pulseras"]
+CATEGORIAS = ["anillos", "collares", "aretes", "pulseras"]
 MATERIALES = ["Plata", "Oro", "Acero", "Oro blanco"]
 ESTADOS_ENVIO = ["Pendiente", "Despachado", "Entregado", "Cancelado"]
 ESTADOS_PAGO = ["APROBADO", "PENDIENTE", "RECHAZADO"]
