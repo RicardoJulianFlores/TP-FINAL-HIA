@@ -91,6 +91,7 @@ jobs:
       - name: Checkout del código
         uses: actions/checkout@v4
 
+
       - name: Desplegar en F:\lumiere-test con Rollback aislado
         run: |
           $deployDir = "F:\lumiere-test"
