@@ -160,8 +160,11 @@ export class ProductoService {
 
   constructor(private http: HttpClient) { }
 
-  getProductos(): Observable<Producto[]> {
-    return this.http.get<Producto[]>(this.apiUrl);
+  getProductos(page = 1, limit = 20, q = ''): Observable<{ data: Producto[]; total: number; page: number; limit: number }> {
+    return this.http.get<{ data: Producto[]; total: number; page: number; limit: number }>(
+      this.apiUrl,
+      { params: { page, limit, q } }
+    );
   }
 
   getProductosPorCategoria(categoria: string): Observable<Producto[]> {

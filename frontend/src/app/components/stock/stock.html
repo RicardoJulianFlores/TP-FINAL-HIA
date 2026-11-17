@@ -18,6 +18,11 @@
       Montar mock
     </button>
   </div>
+  <div class="input-group mb-3">
+    <input type="text" class="form-control" placeholder="Buscar por nombre..."
+           [(ngModel)]="busqueda" (keyup.enter)="buscar()">
+    <button class="btn btn-outline-dark" type="button" (click)="buscar()">Buscar</button>
+  </div>
   <div *ngIf="!cargando" class="row g-4">
     <div class="col-12 col-sm-6 col-lg-3" *ngFor="let producto of productos">
       <div class="card h-100 shadow-sm border-0 producto-card position-relative">
@@ -76,6 +81,25 @@
       </div>
     </div>
   </div>
+
+  <!-- Paginador -->
+  <nav *ngIf="!cargando && total > 0" class="d-flex justify-content-between align-items-center mt-4">
+    <small class="text-muted">Página {{ pagina }} de {{ totalPaginas }} ({{ total | number }} productos)</small>
+    <ul class="pagination mb-0">
+      <li class="page-item" [class.disabled]="pagina === 1">
+        <button class="page-link" (click)="irAPagina(1)">«</button>
+      </li>
+      <li class="page-item" [class.disabled]="pagina === 1">
+        <button class="page-link" (click)="irAPagina(pagina - 1)">Anterior</button>
+      </li>
+      <li class="page-item" [class.disabled]="pagina === totalPaginas">
+        <button class="page-link" (click)="irAPagina(pagina + 1)">Siguiente</button>
+      </li>
+      <li class="page-item" [class.disabled]="pagina === totalPaginas">
+        <button class="page-link" (click)="irAPagina(totalPaginas)">»</button>
+      </li>
+    </ul>
+  </nav>
 
   <!-- Modal de edición de producto -->
   <div class="modal-backdrop-custom" *ngIf="mostrarModal">

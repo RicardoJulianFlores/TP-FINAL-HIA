@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const Producto = require('../models/producto.model');
 const productoCtrl = {};
 
@@ -8,8 +9,19 @@ productoCtrl.getProductos = async (req, res) => {
     #swagger.summary = 'Obtener todos los productos'
     */
     try {
-        const productos = await Producto.findAll();
-        res.json(productos);
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const q = (req.query.q || '').trim();
+        const where = q ? { nombre: { [Op.iLike]: `%${q}%` } } : {};
+
+        const { rows, count } = await Producto.findAndCountAll({
+            where,
+            limit,
+            offset: (page - 1) * limit,
+            order: [['id', 'ASC']]
+        });
+
+        res.json({ data: rows, total: count, page, limit });
     } catch (error) {
         res.status(500).json({ status: '0', msg: 'Error al obtener los Productos.' });
     }
