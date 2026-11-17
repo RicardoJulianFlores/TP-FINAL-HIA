@@ -260,7 +260,6 @@ services:
     networks:
       - admin-net
 
-
 volumes:
   pgdata:
     name: lumiere_pgdata
