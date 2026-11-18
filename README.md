@@ -60,6 +60,30 @@ pgAdmin: http://localhost:5050 → iniciar sesión con `PGADMIN_EMAIL` / `PGADMI
 
 Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los suba a git (ya están en `.gitignore`) y guarde una copia fuera de esta máquina.
 
+## Carga masiva (36.000.000 de registros: 6M por tabla)
+
+Guía completa: **[datos/README.md](datos/README.md)**.
+
+```bash
+docker compose up -d db db-replica pgadmin
+python datos/generar_datos.py                  # crea datos/csv (36M de filas, 3,7 GB)
+python datos/cargar_datos.py --sin-indices     # carga con COPY (sin índices analíticos, ~21 min)
+python datos/crear_dump.py                     # crea backups/lumiere-36m.dump (830 MB, ~4 min)
+```
+
+Los índices de consulta se crean después, cuando la carga ya terminó:
+
+```bash
+python datos/cargar_datos.py --solo-indices
+```
+
+Los compañeros solo necesitan el dump y ejecutar `RESTAURAR_DATOS.bat`
+(Windows) o `python datos/restaurar_dump.py` (Linux/macOS).
+
+> El antiguo `backups/backup-6m.dump` (21 KB) es un dump de esquema vacío y
+> **no** contiene los 6 millones de registros. Use el que genera
+> `datos/crear_dump.py`.
+
 ## Notas
 
 - `db/init/` solo se ejecuta cuando el volumen está vacío. Si cambia el esquema, aplíquelo con SQL sobre la base o recree el volumen (`docker compose down -v`, **borra todos los datos**).

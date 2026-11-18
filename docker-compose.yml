@@ -43,8 +43,11 @@ services:
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - GENERIC_TIMEZONE=America/Argentina/Jujuy
+      - NODES_EXCLUDE=[]
+      - N8N_RESTRICT_FILE_ACCESS_TO=/backups
     volumes:
       - n8n_data:/home/node/.n8n
+      - backups_data:/backups
     networks:
       - admin-net
   cadvisor:
@@ -187,6 +190,29 @@ services:
         aliases:
           - db-replica-2
 
+  db-backup:
+      image: postgres:17-alpine
+      container_name: lumiere-db-backup
+      restart: unless-stopped
+      environment:
+        PGHOST: db
+        PGUSER: ${DB_USER:-postgres}
+        PGPASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+        PGDATABASE: ${DB_NAME:-trabajoFinal}
+        TZ: America/Argentina/Jujuy
+      volumes:
+        - backups_data:/backups
+      depends_on:
+        db:
+          condition: service_healthy
+      entrypoint: ["/bin/sh", "-c"]
+      command:
+        - |
+          echo "0 3 * * * pg_dump --clean --if-exists --no-owner | gzip > /backups/backup_trabajoFinal_\$$(date +\%Y-\%m-\%d).sql.gz" > /etc/crontabs/root
+          crond -f -l 2
+      networks:
+        - db-net
+
   pgadmin:
     image: dpage/pgadmin4:9
     container_name: lumiere-pgadmin
@@ -211,6 +237,7 @@ services:
       - admin-net
 
   backend:
+    image: ${DOCKER_USERNAME}/lumiere-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -231,9 +258,15 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
       JWT_SECRET: ${JWT_SECRET:-secretkey}
-      ACCESS_TOKEN: ${ACCESS_TOKEN:-APP_USR-1197074938502805-070311-2b5184f280c83c5f7022740503588a04-3517051204}
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       db:
         condition: service_healthy
@@ -246,6 +279,7 @@ services:
       - admin-net
 
   frontend:
+    image: ${DOCKER_USERNAME}/lumiere-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -254,7 +288,14 @@ services:
     ports:
       - "8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - admin-net
 
@@ -271,7 +312,8 @@ volumes:
     name: lumiere_n8n_data
   grafana_data:
     name: lumiere_grafana_data
-
+  backups_data:
+    name: lumiere_backups_data
 networks:
   db-net:
     internal: true       # Aislada: solo tráfico interno entre DBs, Backend y pgAdmin

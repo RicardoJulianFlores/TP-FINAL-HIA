@@ -28,6 +28,12 @@ export class Stock {
 
   erroMsg = '';
 
+  // Paginación
+  pagina = 1;
+  limite = 20;
+  total = 0;
+  busqueda = '';
+
   constructor(
     private productoService: ProductoService,
     private router: Router,
@@ -38,18 +44,43 @@ export class Stock {
     this.cargarProductos();
   }
 
+  get totalPaginas(): number {
+    return Math.max(Math.ceil(this.total / this.limite), 1);
+  }
+
   cargarProductos(){
-    this.productoService.getProductos().subscribe(
-      (productos) => {
-        this.productos = productos;
+    this.cargando = true;
+    this.productoService.getProductos(this.pagina, this.limite, this.busqueda).subscribe({
+      next: (resp) => {
+        this.productos = resp.data;
+        this.total = resp.total;
         this.cargando = false;
         this.cdr.detectChanges();
       },
-      error => {
-        this.erroMsg = 'Debes ingresar con una cuenta Empleado';
-        this.cdr.detectChanges();
-        setTimeout(() => this.router.navigateByUrl('/login'), 1500);
-      });
+      error: (err) => {
+        this.cargando = false;
+        // Solo redirigimos al login si el problema es de autenticación/permisos
+        if (err.status === 401 || err.status === 403) {
+          this.erroMsg = 'Debes ingresar con una cuenta Empleado';
+          this.cdr.detectChanges();
+          setTimeout(() => this.router.navigateByUrl('/login'), 1500);
+        } else {
+          this.erroMsg = 'No se pudieron cargar los productos. Intentá de nuevo.';
+          this.cdr.detectChanges();
+        }
+      }
+    });
+  }
+
+  irAPagina(p: number){
+    if (p < 1 || p > this.totalPaginas || p === this.pagina) return;
+    this.pagina = p;
+    this.cargarProductos();
+  }
+
+  buscar(){
+    this.pagina = 1;
+    this.cargarProductos();
   }
 
   editar(producto: Producto){
@@ -131,7 +162,7 @@ export class Stock {
 
   montarMock(){
     const productosMock = this.productoService.getProductosMock();
-    if(this.productos.length != 0){
+    if(this.total != 0){
       alert("El stock debe estar vacio para montar el mock");
       return
     }

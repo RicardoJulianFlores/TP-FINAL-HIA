@@ -4,51 +4,159 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
+  # ==========================================================
+  # ETAPA 1: VALIDACIÓN Y PRUEBAS (Bloquea PRs defectuosos)
+  # ==========================================================
   test-and-lint:
     runs-on: self-hosted
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Crear archivo .env
+      - name: Generar .env temporal para validación
         run: |
-          Set-Content -Path .env -Value "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
-          Add-Content -Path .env -Value "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
-          Add-Content -Path .env -Value "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+          @(
+            "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}"
+            "IMAGE_TAG=${{ github.sha }}"
+            "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
+            "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
+            "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+            "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
+          ) | Set-Content -Path .env
 
       - name: Validar sintaxis del docker-compose
-        run: docker-compose config -q
+        run: docker compose config -q
 
+      - name: Construir imágenes de prueba (Backend y Frontend)
+        run: |
+          docker build -t test-backend:${{ github.sha }} ./backend
+          docker build -t test-frontend:${{ github.sha }} ./frontend
+
+      - name: Ejecutar pruebas del Backend
+        run: |
+          docker run --rm test-backend:${{ github.sha }} npm test --if-present
+
+      - name: Limpiar imágenes temporales de prueba
+        if: always()
+        run: |
+          docker rmi -f test-backend:${{ github.sha }} test-frontend:${{ github.sha }} 2>$null
+
+  # ==========================================================
+  # ETAPA 2: PUBLICAR IMÁGENES INMUTABLES EN DOCKER HUB
+  # ==========================================================
   build-and-push:
     needs: test-and-lint
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: self-hosted
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Iniciar sesión en Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Construir y publicar imagen
-        uses: docker/build-push-action@v4
+      - name: Construir y publicar Backend
+        uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./backend
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/tp-final-hia:latest
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/lumiere-backend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/lumiere-backend:latest
 
+      - name: Construir y publicar Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/lumiere-frontend:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/lumiere-frontend:latest
+
+  # ==========================================================
+  # ETAPA 3: DESPLIEGUE SEGURO Y ROLLBACK AUTOMÁTICO
+  # ==========================================================
   deploy:
     needs: build-and-push
     runs-on: self-hosted
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Desplegar en la máquina local
+
+      - name: Desplegar en F:\lumiere-test con Rollback aislado
         run: |
-          docker-compose pull
-          docker-compose up -d --remove-orphans
+          $deployDir = "F:\lumiere-test"
+          $projectName = "lumiere-test"
+
+          # 1. Crear carpeta en unidad F: y copiar archivos de configuración
+          New-Item -ItemType Directory -Force -Path $deployDir | Out-Null
+          Copy-Item -Path "docker-compose.yml" -Destination "$deployDir\docker-compose.yml" -Force
+          Copy-Item -Path "monitoring" -Destination "$deployDir\monitoring" -Recurse -Force
+          Copy-Item -Path "db" -Destination "$deployDir\db" -Recurse -Force
+          Copy-Item -Path "pgadmin" -Destination "$deployDir\pgadmin" -Recurse -Force
+
+          # Cambiar de directorio (en PowerShell Set-Location cambia de unidad automáticamente a F:)
+          Set-Location $deployDir
+
+          # 2. Guardar el último tag estable de este entorno de pruebas
+          if (Test-Path ".env") {
+            $currentTag = (Get-Content ".env" | Where-Object { $_ -match "^IMAGE_TAG=" }) -replace "^IMAGE_TAG=", ""
+            if ($currentTag) {
+              Set-Content -Path ".last_working_tag" -Value $currentTag
+            }
+          }
+
+          # 3. Escribir el nuevo .env con el SHA del commit actual
+          @(
+            "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}"
+            "IMAGE_TAG=${{ github.sha }}"
+            "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
+            "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
+            "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+            "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
+          ) | Set-Content -Path ".env"
+
+          # Limpiar cualquier salto de línea CRLF en todos los .sh copiados a F:\lumiere-test
+          Get-ChildItem -Path "$deployDir\db" -Filter "*.sh" -Recurse | ForEach-Object {
+            $content = [System.IO.File]::ReadAllText($_.FullName) -replace "`r`n", "`n"
+            [System.IO.File]::WriteAllText($_.FullName, $content, (New-Object System.Text.UTF8Encoding $false))
+          }
+
+          # 4. Descargar y levantar usando -p para aislar volúmenes, redes y contenedores
+          docker compose -p $projectName pull backend frontend
+          docker compose -p $projectName up -d --remove-orphans --wait --wait-timeout 90
+
+          # 5. Rollback automático sobre el mismo proyecto aislado
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Falló el healthcheck en $projectName. Ejecutando Rollback..." -ForegroundColor Red
+            
+            if (Test-Path ".last_working_tag") {
+              $previousTag = Get-Content ".last_working_tag"
+              Write-Host "Revirtiendo a la versión estable: $previousTag" -ForegroundColor Yellow
+              
+              @(
+                "DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}"
+                "IMAGE_TAG=$previousTag"
+                "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
+                "PGADMIN_EMAIL=${{ secrets.PGADMIN_EMAIL }}"
+                "PGADMIN_PASSWORD=${{ secrets.PGADMIN_PASSWORD }}"
+                "ACCESS_TOKEN=${{ secrets.ACCESS_TOKEN }}"
+              ) | Set-Content -Path ".env"
+
+              docker compose -p $projectName up -d --remove-orphans
+              Write-Host "Rollback completado en $projectName." -ForegroundColor Green
+            } else {
+              Write-Host "No existe un tag previo registrado para revertir." -ForegroundColor Red
+            }
+            
+            exit 1
+          }

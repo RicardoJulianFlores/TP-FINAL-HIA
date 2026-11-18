@@ -40,7 +40,7 @@ export class LoginForm {
             sessionStorage.setItem("email", user.email);
             // Redirección según el perfil
             if (user.perfil === 'administrador' || user.perfil === 'Administrador') {
-              this.router.navigate(['/admin/dashboard']);
+              this.router.navigate(['/admin/']);
             } else {
               this.router.navigateByUrl(this.returnUrl);
             }

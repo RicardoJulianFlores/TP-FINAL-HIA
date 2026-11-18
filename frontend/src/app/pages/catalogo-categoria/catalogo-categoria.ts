@@ -20,6 +20,11 @@ export class CatalogoCategoria implements OnInit {
   cargando = true;
   agregadoId: number | null = null;
 
+  // Paginación
+  pagina = 1;
+  limite = 12;
+  total = 0;
+
   nombresCategoria: { [key: string]: string } = {
     anillos: 'Anillos',
     collares: 'Collares',
@@ -37,6 +42,7 @@ export class CatalogoCategoria implements OnInit {
   ngOnInit(): void {
     this.route.paramMap.subscribe(params => {
       this.categoria = params.get('categoria') || '';
+      this.pagina = 1;
       this.cargarProductos();
     });
   }
@@ -45,13 +51,33 @@ export class CatalogoCategoria implements OnInit {
     return this.nombresCategoria[this.categoria] || this.categoria;
   }
 
+  get totalPaginas(): number {
+    return Math.max(Math.ceil(this.total / this.limite), 1);
+  }
+
   private cargarProductos(): void {
     this.cargando = true;
-    this.productoService.getProductosPorCategoria(this.categoria).subscribe(productos => {
-      this.productos = productos.filter(producto => producto.stock > 0);
-      this.cargando = false;
-      this.cdr.detectChanges();
+    this.productoService.getProductosPorCategoria(this.categoria, this.pagina, this.limite, true).subscribe({
+      next: (resp) => {
+        this.productos = resp.data;
+        this.total = resp.total;
+        this.cargando = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.productos = [];
+        this.total = 0;
+        this.cargando = false;
+        this.cdr.detectChanges();
+      }
     });
+  }
+
+  irAPagina(p: number): void {
+    if (p < 1 || p > this.totalPaginas || p === this.pagina) return;
+    this.pagina = p;
+    this.cargarProductos();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   agregarAlCarrito(producto: Producto): void {
