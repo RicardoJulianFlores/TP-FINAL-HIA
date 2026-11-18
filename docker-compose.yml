@@ -138,6 +138,7 @@ services:
       DB_PRIMARY_PORT: 5432
       DB_REPLICA_USER: ${DB_REPLICA_USER:-replicator}
       DB_REPLICA_PASSWORD: ${DB_REPLICA_PASSWORD:-replica_password}
+      DB_REPLICA_SLOT: ${DB_REPLICA_SLOT:-replica_slot}
     volumes:
       - pgdata-replica:/var/lib/postgresql/data
       - ./db/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
@@ -154,6 +155,37 @@ services:
       db-net:
         aliases:
           - db-replica
+          - db-replica-1
+
+  db-replica-2:
+    image: postgres:17-alpine
+    container_name: lumiere-db-replica-2
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-trabajoFinal}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
+      DB_PRIMARY_HOST: db
+      DB_PRIMARY_PORT: 5432
+      DB_REPLICA_USER: ${DB_REPLICA_USER:-replicator}
+      DB_REPLICA_PASSWORD: ${DB_REPLICA_PASSWORD:-replica_password}
+      DB_REPLICA_SLOT: ${DB_REPLICA_SLOT_2:-replica_slot_2}
+    volumes:
+      - pgdata-replica-2:/var/lib/postgresql/data
+      - ./db/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/replica-entrypoint.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      db-net:
+        aliases:
+          - db-replica-2
 
   pgadmin:
     image: dpage/pgadmin4:9
@@ -171,6 +203,8 @@ services:
       db:
         condition: service_healthy
       db-replica:
+        condition: service_healthy
+      db-replica-2:
         condition: service_healthy
     networks:
       - db-net
@@ -190,6 +224,9 @@ services:
       DB_WRITE_PORT: ${DB_WRITE_PORT:-5432}
       DB_READ_HOST: ${DB_READ_HOST:-db-replica}
       DB_READ_PORT: ${DB_READ_PORT:-5432}
+      DB_READ_HOST_2: ${DB_READ_HOST_2:-db-replica-2}
+      DB_READ_PORT_2: ${DB_READ_PORT_2:-5432}
+      DB_READ_HOSTS: ${DB_READ_HOSTS:-db-replica,db-replica-2}
       DB_NAME: ${DB_NAME:-trabajoFinal}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en el archivo .env}
@@ -201,6 +238,8 @@ services:
       db:
         condition: service_healthy
       db-replica:
+        condition: service_healthy
+      db-replica-2:
         condition: service_healthy
     networks:
       - db-net
@@ -224,6 +263,8 @@ volumes:
     name: lumiere_pgdata
   pgdata-replica:
     name: lumiere_pgdata_replica
+  pgdata-replica-2:
+    name: lumiere_pgdata_replica_2
   pgadmin-data:
     name: lumiere_pgadmin_data
   n8n_data:
