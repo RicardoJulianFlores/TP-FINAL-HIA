@@ -220,6 +220,33 @@ function testQuorumCalculationLogic() {
         assert.strictEqual(res.quorum.quorum_reached, false);
         console.log('✓ Caso 9 (Outage 503) verificado.');
     }
+
+    // Caso 10: Defensivo ante inputs nulos / indefinidos
+    {
+        const res = calculateClusterHealth(null, null);
+        assert.strictEqual(res.status, 'outage');
+        assert.strictEqual(res.httpCode, 503);
+        assert.strictEqual(res.quorum.total_nodes, 1);
+        assert.strictEqual(res.quorum.healthy_nodes, 0);
+        assert.strictEqual(res.quorum.quorum_reached, false);
+        console.log('✓ Caso 10 (Defensivo ante inputs nulos) verificado.');
+    }
+
+    // Caso 11: Topología de 2 nodos (1 primario + 1 réplica) saludable
+    {
+        const primary = { status: 'healthy', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: true, host: 'db-replica', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
+        assert.strictEqual(res.status, 'healthy');
+        assert.strictEqual(res.httpCode, 200);
+        assert.strictEqual(res.quorum.total_nodes, 2);
+        assert.strictEqual(res.quorum.healthy_nodes, 2);
+        assert.strictEqual(res.quorum.quorum_threshold, 2);
+        assert.strictEqual(res.quorum.quorum_reached, true);
+        console.log('✓ Caso 11 (Topología de 2 nodos saludable) verificado.');
+    }
 }
 
 try {
