@@ -21,6 +21,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     WHERE NOT EXISTS (
         SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot'
     );
+
+    SELECT pg_create_physical_replication_slot('replica_slot_2')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot_2'
+    );
 EOSQL
 
 echo "host replication ${REPLICA_USER} 0.0.0.0/0 scram-sha-256" >> "$PGDATA/pg_hba.conf"

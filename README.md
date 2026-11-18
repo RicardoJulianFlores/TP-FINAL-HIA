@@ -136,15 +136,17 @@ Si la aplicación no responde y el pipeline tarda demasiado en compilar:
 
 ---
 
-## Clúster de Base de Datos: Topología Maestro-Esclavo (Primario + Réplica)
+## Clúster de Base de Datos: Topología de 3 Nodos (Primario + 2 Réplicas)
 
-Se configuró una arquitectura de alta disponibilidad y segregación de lectura/escritura mediante **Streaming Replication** física nativa de PostgreSQL 17:
-- **Nodo Primario (`lumiere-db`):** Responsable de las transacciones de escritura (`INSERT`, `UPDATE`, `DELETE`, DDL). Genera los registros WAL (*Write-Ahead Logging*) y los transmite mediante un replication slot (`replica_slot`).
-- **Nodo Réplica (`lumiere-db-replica`):** Servidor en modo *Hot Standby* de solo lectura. Clona el estado inicial del primario vía `pg_basebackup` y se mantiene sincronizado en tiempo real.
-- **Backend (Express + Sequelize):** Pool de conexiones dual (`replication: { write: ..., read: [...] }`). Las consultas de lectura se derivan automáticamente a la réplica y las escrituras al nodo primario.
-- **Endpoint de Monitoreo:** `GET /api/health` reporta el estado y conectividad de ambos nodos del clúster.
+Se configuró una arquitectura de alta disponibilidad, tolerancia a fallos por quórum y segregación/balanceo de carga de lectura/escritura mediante **Streaming Replication** física nativa de PostgreSQL 17:
+- **Nodo Primario (`lumiere-db`):** Responsable exclusivo de las transacciones de escritura (`INSERT`, `UPDATE`, `DELETE`, DDL). Genera los registros WAL (*Write-Ahead Logging*) y los transmite mediante slots de replicación dedicados (`replica_slot` y `replica_slot_2`).
+- **Nodo Réplica 1 (`lumiere-db-replica`):** Servidor en modo *Hot Standby* de solo lectura. Clona el estado inicial del primario vía `pg_basebackup` y replica en streaming desde `replica_slot`.
+- **Nodo Réplica 2 (`lumiere-db-replica-2`):** Servidor secundario en modo *Hot Standby* de solo lectura. Clona el primario vía `pg_basebackup` y replica en streaming desde `replica_slot_2`. Garantiza quórum de mayoría (2 de 3 nodos) y alta disponibilidad continua ante la caída de cualquier nodo del clúster.
+- **Backend (Express + Sequelize):** Pool de conexiones de replicación con balanceo de carga (`replication: { write: ..., read: [replica1, replica2] }`). Las consultas de lectura se distribuyen equitativamente (*round-robin*) entre ambas réplicas, mientras que las transacciones de escritura van al primario.
+- **Quórum y Resiliencia:** El clúster opera con un umbral de consenso de mayoría estricto ($\lfloor N/2 \rfloor + 1 = 2$). Si una de las dos réplicas experimenta una falla, el sistema continúa procesando lecturas y escrituras sin degradación de servicio ni pérdida de quórum.
+- **Endpoint de Monitoreo:** `GET /api/health` reporta el estado detallado de salud, conectividad individual de cada nodo (`primary`, `replicas`), métricas de quórum (`total_nodes`, `healthy_nodes`, `quorum_threshold`, `quorum_reached`) y estado global.
 
-### Diagrama de Red y Topología del Clúster
+### Diagrama de Red y Topología del Clúster (3 Nodos)
 
 ```mermaid
 flowchart TD
@@ -161,9 +163,11 @@ flowchart TD
 
     subgraph DbNet["Docker Network: db-net (internal: true)"]
         Primary["DB Primario: lumiere-db (5432/tcp) - ESCRITURA"]
-        Replica["DB Réplica: lumiere-db-replica (5432/tcp) - LECTURA"]
+        Replica1["DB Réplica 1: lumiere-db-replica (5432/tcp) - LECTURA"]
+        Replica2["DB Réplica 2: lumiere-db-replica-2 (5432/tcp) - LECTURA"]
         VolPrimary[("Volumen: lumiere_pgdata")]
-        VolReplica[("Volumen: lumiere_pgdata_replica")]
+        VolReplica1[("Volumen: lumiere_pgdata_replica")]
+        VolReplica2[("Volumen: lumiere_pgdata_replica_2")]
     end
 
     Client -->|HTTP 8080| Frontend
@@ -174,38 +178,44 @@ flowchart TD
     Tunnel --> Frontend
 
     Backend -->|Sequelize Write / DDL: 5432| Primary
-    Backend -->|Sequelize Read: 5432| Replica
+    Backend -->|Sequelize Read Balanceado: 5432| Replica1
+    Backend -->|Sequelize Read Balanceado: 5432| Replica2
 
     PgAdmin -->|Admin: 5432| Primary
-    PgAdmin -->|Admin: 5432| Replica
+    PgAdmin -->|Admin: 5432| Replica1
+    PgAdmin -->|Admin: 5432| Replica2
 
-    Primary -.->|Streaming Replication WAL / 5432 (Slot: replica_slot)| Replica
+    Primary -.->|WAL Streaming / 5432 (Slot: replica_slot)| Replica1
+    Primary -.->|WAL Streaming / 5432 (Slot: replica_slot_2)| Replica2
     Primary --- VolPrimary
-    Replica --- VolReplica
+    Replica1 --- VolReplica1
+    Replica2 --- VolReplica2
 ```
 
 ### Matriz de Puertos y Servicios
 
 | Servicio | Contenedor | Redes | Puerto Interno | Puerto Host / Exposición | Rol |
 |---|---|---|---|---|---|
-| `db` | `lumiere-db` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Primario (Escritura y WAL streaming) |
-| `db-replica` | `lumiere-db-replica` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica (Hot Standby - Solo Lectura) |
-| `pgadmin` | `lumiere-pgadmin` | `db-net`, `admin-net` | 80/tcp | `127.0.0.1:5050` | Administrador visual de ambos nodos |
-| `backend` | `joyeria-backend` | `db-net`, `admin-net` | 3000/tcp | `0.0.0.0:3000` | API REST con dual-pool Sequelize |
+| `db` | `lumiere-db` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Primario (Escritura y WAL streaming a 2 réplicas) |
+| `db-replica` | `lumiere-db-replica` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica 1 (Hot Standby - Solo Lectura / Quórum) |
+| `db-replica-2` | `lumiere-db-replica-2` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica 2 (Hot Standby - Solo Lectura / Quórum) |
+| `pgadmin` | `lumiere-pgadmin` | `db-net`, `admin-net` | 80/tcp | `127.0.0.1:5050` | Administrador visual de los 3 nodos del clúster |
+| `backend` | `joyeria-backend` | `db-net`, `admin-net` | 3000/tcp | `0.0.0.0:3000` | API REST con pool Sequelize de 3 nodos (1 Write + 2 Read) |
 | `frontend` | `joyeria-frontend` | `admin-net` | 80/tcp | `0.0.0.0:8080` | SPA Angular + Nginx |
 
 ### Script de Verificación Automática de Replicación
 
-Para validar la sincronización automática y la restricción de solo lectura:
+Para validar la sincronización automática, quórum de 3 nodos y restricción de solo lectura:
 ```bash
 chmod +x scripts/verificar-replicacion.sh
 ./scripts/verificar-replicacion.sh
 ```
 El script comprueba:
-1. Roles `pg_is_in_recovery()` (`f` para primario, `t` para réplica).
-2. Estado del canal WAL (`pg_stat_replication` y `pg_stat_wal_receiver`).
-3. Inserción de un registro en el primario y verificación de su lectura inmediata en la réplica.
-4. Rechazo de transacciones de escritura directa en la réplica (`read-only transaction`).
+1. Roles `pg_is_in_recovery()` (`f` para primario, `t` para réplica 1 y réplica 2).
+2. Estado del canal WAL (`pg_stat_replication` con recuento esperado de 2 senders en streaming, y `pg_stat_wal_receiver` en ambas réplicas).
+3. Inserción de un registro en el primario y verificación de su sincronización automática en ambas réplicas.
+4. Rechazo de transacciones de escritura directa en ambas réplicas (`read-only transaction`).
+5. Validación de Quórum de mayoría ($\ge 2$ nodos activos sobre 3).
 
 ---
 
