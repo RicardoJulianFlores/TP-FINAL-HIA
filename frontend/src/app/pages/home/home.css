@@ -7,15 +7,21 @@
 }
 
 .promo-1 {
-  background: linear-gradient(135deg, #6a1b1b, #b08d57);
+  background-image:
+    linear-gradient(135deg, rgba(106, 27, 27, .75), rgba(176, 141, 87, .6)),
+    url('https://images.unsplash.com/photo-1599643477877-530eb83abc8e?w=600');
 }
 
 .promo-2 {
-  background: linear-gradient(135deg, #2c2c54, #474787);
+  background-image:
+    linear-gradient(135deg, rgba(44, 44, 84, .75), rgba(71, 71, 135, .6)),
+    url('https://images.unsplash.com/photo-1635767798638-3e25273a8236?w=600');
 }
 
 .promo-3 {
-  background: linear-gradient(135deg, #1b4332, #52796f);
+  background-image:
+    linear-gradient(135deg, rgba(27, 67, 50, .75), rgba(82, 121, 111, .6)),
+    url('https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600');
 }
 
 .producto-img {
