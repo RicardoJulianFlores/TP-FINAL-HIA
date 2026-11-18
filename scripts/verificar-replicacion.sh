@@ -40,17 +40,25 @@ TEST_ITEM="TEST_REPL_$(date +%s)"
 echo "Insertando registro en Primario: $TEST_ITEM"
 docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"INSERT INTO productos (nombre, categoria, precio, stock, destacado, imagen, \\\"createdAt\\\", \\\"updatedAt\\\") VALUES ('$TEST_ITEM', 'Test', 999.99, 10, false, 'test.png', NOW(), NOW());\"" >/dev/null
 
-sleep 1
+FOUND1=""
+FOUND2=""
+echo "Esperando sincronización de datos en ambas réplicas..."
+for i in $(seq 1 10); do
+  FOUND1=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT nombre FROM productos WHERE nombre = '$TEST_ITEM';\"" 2>/dev/null || echo "")
+  FOUND2=$(docker compose exec -T db-replica-2 sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT nombre FROM productos WHERE nombre = '$TEST_ITEM';\"" 2>/dev/null || echo "")
+  if [ "$FOUND1" = "$TEST_ITEM" ] && [ "$FOUND2" = "$TEST_ITEM" ]; then
+    break
+  fi
+  sleep 0.5
+done
 
-echo "Consultando registro en Réplica 1..."
-FOUND1=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT nombre FROM productos WHERE nombre = '$TEST_ITEM';\"")
-echo "Consultando registro en Réplica 2..."
-FOUND2=$(docker compose exec -T db-replica-2 sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT nombre FROM productos WHERE nombre = '$TEST_ITEM';\"")
+echo "Réplica 1 comprobación: '$FOUND1'"
+echo "Réplica 2 comprobación: '$FOUND2'"
 
 if [ "$FOUND1" = "$TEST_ITEM" ] && [ "$FOUND2" = "$TEST_ITEM" ]; then
   echo "OK: El registro insertado en el primario se sincronizó automáticamente en ambas réplicas (Réplica 1 y Réplica 2)."
 else
-  echo "ERROR: El registro no fue encontrado en ambas réplicas. R1='$FOUND1', R2='$FOUND2'" >&2
+  echo "ERROR: El registro no fue encontrado en ambas réplicas tras tiempo de espera. R1='$FOUND1', R2='$FOUND2'" >&2
   exit 1
 fi
 

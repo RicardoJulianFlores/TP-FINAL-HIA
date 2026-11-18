@@ -52,4 +52,9 @@ else
 fi
 
 echo "Starting PostgreSQL in standby mode..."
-exec docker-entrypoint.sh postgres -c hot_standby=on
+exec docker-entrypoint.sh postgres \
+  -c hot_standby=on \
+  -c wal_level=replica \
+  -c max_wal_senders=10 \
+  -c max_replication_slots=10 \
+  -c wal_keep_size=128MB

@@ -1,5 +1,6 @@
 process.env.NODE_ENV = 'test';
 const assert = require('assert');
+const { calculateClusterHealth } = require('../config/cluster-health');
 
 // Test Suite: Validacion de Configuracion de Cluster de 3 Nodos y Logica de Quorum
 
@@ -56,59 +57,47 @@ function testReadHostsResolution() {
         assert.strictEqual(db.readPoolConfigs[1].port, 5434);
         console.log('✓ Subtest D (Puertos personalizados) paso exitosamente.');
     }
+
+    // Subtest E: Fallback defensivo si DB_READ_HOSTS contiene solo espacios en blanco
+    {
+        process.env.DB_READ_HOSTS = '   ';
+        process.env.DB_READ_HOST = 'db-replica';
+        process.env.DB_READ_HOST_2 = 'db-replica-2';
+        delete require.cache[require.resolve('../config/database')];
+        const db = require('../config/database');
+        assert.strictEqual(db.readPoolConfigs.length, 2, 'Debe hacer fallback a DB_READ_HOST y DB_READ_HOST_2');
+        assert.strictEqual(db.readPoolConfigs[0].host, 'db-replica');
+        assert.strictEqual(db.readPoolConfigs[1].host, 'db-replica-2');
+        console.log('✓ Subtest E (Fallback defensivo con espacios en DB_READ_HOSTS) paso exitosamente.');
+    }
+
+    // Subtest F: Comma-separated en DB_READ_HOST cuando DB_READ_HOSTS no esta definido
+    {
+        delete process.env.DB_READ_HOSTS;
+        process.env.DB_READ_HOST = 'db-replica,db-replica-2';
+        delete process.env.DB_READ_HOST_2;
+        delete require.cache[require.resolve('../config/database')];
+        const db = require('../config/database');
+        assert.strictEqual(db.readPoolConfigs.length, 2);
+        assert.strictEqual(db.readPoolConfigs[0].host, 'db-replica');
+        assert.strictEqual(db.readPoolConfigs[1].host, 'db-replica-2');
+        console.log('✓ Subtest F (DB_READ_HOST comma-separated) paso exitosamente.');
+    }
 }
 
 function testQuorumCalculationLogic() {
-    console.log('--- Test 2: Logica de Quorum y Estados de Salud ---');
-
-    const evaluateHealth = (primaryHealthy, replicas) => {
-        const totalNodes = 1 + replicas.length;
-        const healthyPrimaryCount = primaryHealthy ? 1 : 0;
-        const healthyReplicasCount = replicas.filter(r => r.status === 'healthy').length;
-        const totalHealthyNodes = healthyPrimaryCount + healthyReplicasCount;
-        const quorumThreshold = Math.floor(totalNodes / 2) + 1;
-        const quorumReached = totalHealthyNodes >= quorumThreshold;
-
-        let status;
-        let httpCode = 200;
-
-        if (primaryHealthy && healthyReplicasCount === replicas.length) {
-            status = 'healthy';
-        } else if (primaryHealthy && healthyReplicasCount > 0) {
-            status = 'healthy_partial_replica';
-        } else if (primaryHealthy && healthyReplicasCount === 0) {
-            status = 'degraded_no_replica';
-        } else if (!primaryHealthy && healthyReplicasCount > 0) {
-            const promoted = replicas.find(r => r.status === 'healthy' && r.in_recovery === false);
-            if (promoted) {
-                status = 'promoted_primary_no_standby';
-            } else {
-                status = 'degraded_read_only';
-            }
-        } else {
-            status = 'outage';
-            httpCode = 503;
-        }
-
-        return {
-            status,
-            httpCode,
-            quorum: {
-                total_nodes: totalNodes,
-                healthy_nodes: totalHealthyNodes,
-                quorum_threshold: quorumThreshold,
-                quorum_reached: quorumReached
-            }
-        };
-    };
+    console.log('--- Test 2: Logica de Quorum y Estados de Salud (Produccion cluster-health.js) ---');
 
     // Caso 1: 3/3 nodos saludables
     {
-        const res = evaluateHealth(true, [
-            { status: 'healthy', in_recovery: true },
-            { status: 'healthy', in_recovery: true }
-        ]);
+        const primary = { status: 'healthy', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'healthy', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'healthy');
+        assert.strictEqual(res.httpCode, 200);
         assert.strictEqual(res.quorum.total_nodes, 3);
         assert.strictEqual(res.quorum.healthy_nodes, 3);
         assert.strictEqual(res.quorum.quorum_threshold, 2);
@@ -116,62 +105,120 @@ function testQuorumCalculationLogic() {
         console.log('✓ Caso 1 (3/3 saludable) verificado.');
     }
 
-    // Caso 2: Primario + 1 Replica saludables (1 replica caida -> quorum cumplido!)
+    // Caso 2: Primario + 1 Replica saludables (1 replica caida -> quorum 2/3 cumplido)
     {
-        const res = evaluateHealth(true, [
-            { status: 'healthy', in_recovery: true },
-            { status: 'down', in_recovery: true }
-        ]);
+        const primary = { status: 'healthy', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'down', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'healthy_partial_replica');
+        assert.strictEqual(res.httpCode, 200);
         assert.strictEqual(res.quorum.healthy_nodes, 2);
         assert.strictEqual(res.quorum.quorum_reached, true);
         console.log('✓ Caso 2 (Primario + 1 replica vivos, quorum mantenido) verificado.');
     }
 
-    // Caso 3: Primario saludable, 2 replicas caidas (quorum perdido)
+    // Caso 3: Primario saludable, 2 replicas caidas (quorum 1/3 perdido)
     {
-        const res = evaluateHealth(true, [
-            { status: 'down', in_recovery: true },
-            { status: 'down', in_recovery: true }
-        ]);
+        const primary = { status: 'healthy', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'down', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'down', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'degraded_no_replica');
+        assert.strictEqual(res.httpCode, 200);
         assert.strictEqual(res.quorum.healthy_nodes, 1);
         assert.strictEqual(res.quorum.quorum_reached, false);
         console.log('✓ Caso 3 (Solo primario vivo, quorum perdido) verificado.');
     }
 
-    // Caso 4: Primario caido, 2 replicas saludables (failover factible con quorum)
+    // Caso 4: Primario caido, 2 replicas saludables en standby (read-only quorum 2/3)
     {
-        const res = evaluateHealth(false, [
-            { status: 'healthy', in_recovery: true },
-            { status: 'healthy', in_recovery: true }
-        ]);
+        const primary = { status: 'down', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'healthy', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'degraded_read_only');
+        assert.strictEqual(res.httpCode, 200);
         assert.strictEqual(res.quorum.healthy_nodes, 2);
         assert.strictEqual(res.quorum.quorum_reached, true);
         console.log('✓ Caso 4 (Primario caido, 2 replicas vivas con quorum) verificado.');
     }
 
-    // Caso 5: Primario caido, 1 replica promovida
+    // Caso 5: Primario caido, 1 replica promovida, otra replica caida (quorum 1/3 perdido)
     {
-        const res = evaluateHealth(false, [
-            { status: 'healthy', in_recovery: false },
-            { status: 'down', in_recovery: true }
-        ]);
+        const primary = { status: 'down', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: false, host: 'db-replica', port: 5432 },
+            { status: 'down', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'promoted_primary_no_standby');
-        console.log('✓ Caso 5 (Replica promovida) verificado.');
+        assert.strictEqual(res.httpCode, 200);
+        assert.strictEqual(res.quorum.healthy_nodes, 1);
+        assert.strictEqual(res.quorum.quorum_reached, false);
+        console.log('✓ Caso 5 (Replica promovida sin standby) verificado.');
     }
 
-    // Caso 6: Todos los nodos caidos (outage total)
+    // Caso 6: Primario caido, 1 replica promovida, otra replica viva en standby (quorum 2/3 mantenido)
     {
-        const res = evaluateHealth(false, [
-            { status: 'down', in_recovery: true },
-            { status: 'down', in_recovery: true }
-        ]);
+        const primary = { status: 'down', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: false, host: 'db-replica', port: 5432 },
+            { status: 'healthy', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
+        assert.strictEqual(res.status, 'promoted_primary_with_standby');
+        assert.strictEqual(res.httpCode, 200);
+        assert.strictEqual(res.quorum.healthy_nodes, 2);
+        assert.strictEqual(res.quorum.quorum_reached, true);
+        console.log('✓ Caso 6 (Replica promovida con standby superviviente) verificado.');
+    }
+
+    // Caso 7: Deteccion y prevencion de DOBLE CONTEO post-failover
+    // Cuando el alias 'db' y 'db-replica' apuntan al mismo contenedor físico (misma IP)
+    // y la replica 2 esta caida: debe reportar exactamente 1 nodo vivo y quorum PERDIDO.
+    {
+        const primary = { status: 'healthy', in_recovery: false, host: 'db', port: 5432, server_ip: '172.28.0.3' };
+        const replicas = [
+            { status: 'healthy', in_recovery: false, host: 'db-replica', port: 5432, server_ip: '172.28.0.3' },
+            { status: 'down', in_recovery: true, host: 'db-replica-2', port: 5432, server_ip: null }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
+        assert.strictEqual(res.quorum.healthy_nodes, 1, 'No debe contar dos veces el nodo promovido');
+        assert.strictEqual(res.quorum.quorum_reached, false, 'Un solo nodo sobreviviente NO debe alcanzar quorum');
+        console.log('✓ Caso 7 (Prevención de doble conteo post-failover) verificado.');
+    }
+
+    // Caso 8: Primario respondiendo pero en modo recovery (read-only, rechazo de escrituras)
+    {
+        const primary = { status: 'healthy', in_recovery: true, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'healthy', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'healthy', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
+        assert.strictEqual(res.status, 'degraded_read_only', 'Un primario en recovery no debe ser considerado saludable para escrituras');
+        console.log('✓ Caso 8 (Primario en modo recovery tratado como read-only) verificado.');
+    }
+
+    // Caso 9: Outage total (503)
+    {
+        const primary = { status: 'down', in_recovery: false, host: 'db', port: 5432 };
+        const replicas = [
+            { status: 'down', in_recovery: true, host: 'db-replica', port: 5432 },
+            { status: 'down', in_recovery: true, host: 'db-replica-2', port: 5432 }
+        ];
+        const res = calculateClusterHealth(primary, replicas);
         assert.strictEqual(res.status, 'outage');
         assert.strictEqual(res.httpCode, 503);
         assert.strictEqual(res.quorum.quorum_reached, false);
-        console.log('✓ Caso 6 (Outage 503) verificado.');
+        console.log('✓ Caso 9 (Outage 503) verificado.');
     }
 }
 

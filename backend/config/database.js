@@ -12,9 +12,10 @@ const defaultReadPort = parseInt(process.env.DB_READ_PORT || process.env.DB_PORT
 // Resolucion de replicas de lectura (soporta DB_READ_HOSTS separado por comas o DB_READ_HOST + DB_READ_HOST_2)
 const resolveReadHosts = () => {
     let hosts = [];
-    if (process.env.DB_READ_HOSTS) {
+    if (process.env.DB_READ_HOSTS && process.env.DB_READ_HOSTS.trim().length > 0) {
         hosts = process.env.DB_READ_HOSTS.split(',').map(h => h.trim()).filter(Boolean);
-    } else {
+    }
+    if (hosts.length === 0) {
         const primaryRead = process.env.DB_READ_HOST || process.env.DB_REPLICA_HOST;
         if (primaryRead) {
             if (primaryRead.includes(',')) {
@@ -46,6 +47,7 @@ const readPoolConfigs = rawReadHosts.map((entry, idx) => {
     return {
         host,
         port,
+        database: dbName,
         username: dbUser,
         password: dbPassword,
     };
@@ -61,6 +63,7 @@ if (readPoolConfigs.length > 0) {
             write: {
                 host: writeHost,
                 port: writePort,
+                database: dbName,
                 username: dbUser,
                 password: dbPassword,
             }
@@ -116,5 +119,6 @@ if (process.env.NODE_ENV !== 'test') {
 // Metadatos adjuntos para inspeccion de salud y quorum
 sequelize.readPoolConfigs = readPoolConfigs;
 sequelize.writeConfig = { host: writeHost, port: writePort };
+sequelize.resolveReadHosts = resolveReadHosts;
 
 module.exports = sequelize;

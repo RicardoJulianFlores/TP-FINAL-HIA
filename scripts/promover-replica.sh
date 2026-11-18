@@ -72,6 +72,21 @@ elif [ "$REPLICA_REC" = "t" ]; then
     exit 1
   fi
   echo "OK: Nodo $CONTAINER_NAME promovido exitosamente a PRIMARIO (pg_is_in_recovery = false)."
+
+  echo "=== Creando Replication Slots en el nuevo primario ($CONTAINER_NAME) ==="
+  docker compose exec -T "$TARGET" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'EOF'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot') THEN
+    PERFORM pg_create_physical_replication_slot('replica_slot');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot_2') THEN
+    PERFORM pg_create_physical_replication_slot('replica_slot_2');
+  END IF;
+END;
+$$;
+EOF
+  echo "OK: Slots 'replica_slot' y 'replica_slot_2' asegurados en $CONTAINER_NAME para réplicas supervivientes."
 else
   echo "ERROR: No fue posible comunicarse con $CONTAINER_NAME: $REPLICA_REC" >&2
   exit 1
@@ -92,7 +107,11 @@ fi
 if [ -n "$NETWORK_NAME" ]; then
   echo "Red detectada: $NETWORK_NAME"
   docker network disconnect "$NETWORK_NAME" "$CONTAINER_NAME"
-  docker network connect --alias "$TARGET" --alias db --alias db-primary "$NETWORK_NAME" "$CONTAINER_NAME"
+  if [ "$TARGET" = "db-replica" ]; then
+    docker network connect --alias db-replica --alias db-replica-1 --alias db --alias db-primary "$NETWORK_NAME" "$CONTAINER_NAME"
+  else
+    docker network connect --alias "$TARGET" --alias db --alias db-primary "$NETWORK_NAME" "$CONTAINER_NAME"
+  fi
   echo "OK: Alias 'db' y 'db-primary' asignados a $CONTAINER_NAME en $NETWORK_NAME."
 else
   echo "ADVERTENCIA: No se pudo auto-detectar la red db-net. Omitiendo reasignación de alias."

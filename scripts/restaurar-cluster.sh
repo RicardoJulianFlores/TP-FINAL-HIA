@@ -47,7 +47,11 @@ echo "=== 2. Iniciando nodo primario original (lumiere-db) ==="
 if [ -n "$PROMOTED_NODE" ] && [ -n "$NETWORK_NAME" ]; then
   echo "Reasignando réplica promovida ($PROMOTED_NODE) únicamente a su alias original para evitar colisiones..."
   docker network disconnect "$NETWORK_NAME" "lumiere-$PROMOTED_NODE" 2>/dev/null || true
-  docker network connect --alias "$PROMOTED_NODE" "$NETWORK_NAME" "lumiere-$PROMOTED_NODE" 2>/dev/null || true
+  if [ "$PROMOTED_NODE" = "db-replica" ]; then
+    docker network connect --alias db-replica --alias db-replica-1 "$NETWORK_NAME" "lumiere-$PROMOTED_NODE" 2>/dev/null || true
+  else
+    docker network connect --alias "$PROMOTED_NODE" "$NETWORK_NAME" "lumiere-$PROMOTED_NODE" 2>/dev/null || true
+  fi
 fi
 
 docker compose start db || docker compose up -d db
@@ -87,8 +91,8 @@ END;
 $$;
 EOF
 
-# Restaurar db-replica si fue promovida o está fuera de servicio
-if [ "$REPLICA1_REC" = "f" ] || [ "$REPLICA1_REC" = "offline" ] || [ "$REPLICA1_REC" = "unknown" ]; then
+# Restaurar db-replica si fue promovida, si hubo failover, o si está fuera de servicio
+if [ -n "$PROMOTED_NODE" ] || [ "$REPLICA1_REC" = "f" ] || [ "$REPLICA1_REC" = "offline" ] || [ "$REPLICA1_REC" = "unknown" ]; then
   echo "=== 5a. Recreando contenedor lumiere-db-replica para reinicialización en Standby ==="
   docker compose stop db-replica
   docker compose rm -f db-replica
@@ -96,8 +100,8 @@ if [ "$REPLICA1_REC" = "f" ] || [ "$REPLICA1_REC" = "offline" ] || [ "$REPLICA1_
   docker compose up -d db-replica
 fi
 
-# Restaurar db-replica-2 si fue promovida o está fuera de servicio
-if [ "$REPLICA2_REC" = "f" ] || [ "$REPLICA2_REC" = "offline" ] || [ "$REPLICA2_REC" = "unknown" ]; then
+# Restaurar db-replica-2 si fue promovida, si hubo failover, o si está fuera de servicio
+if [ -n "$PROMOTED_NODE" ] || [ "$REPLICA2_REC" = "f" ] || [ "$REPLICA2_REC" = "offline" ] || [ "$REPLICA2_REC" = "unknown" ]; then
   echo "=== 5b. Recreando contenedor lumiere-db-replica-2 para reinicialización en Standby ==="
   docker compose stop db-replica-2
   docker compose rm -f db-replica-2

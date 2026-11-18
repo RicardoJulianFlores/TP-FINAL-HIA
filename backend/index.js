@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { Client } = require('pg');
 const sequelize = require('./config/database');
+const { calculateClusterHealth } = require('./config/cluster-health');
 
 const swaggerUi = require('swagger-ui-express'); //importamos la libreria, y esta genera una interfaz grafica
 const swaggerFile = require('./swagger_output.json');
@@ -45,32 +46,34 @@ app.get('/api/health', async (req, res) => {
     };
 
     if (isReplicated) {
-        let primaryHealthy = false;
         let primaryData = {
             status: 'unknown',
             host: writeTarget.host,
             port: writeTarget.port,
-            in_recovery: false
+            in_recovery: false,
+            server_ip: null
         };
 
         try {
-            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery, inet_server_addr() AS server_ip;', {
                 type: sequelize.QueryTypes.SELECT,
                 useMaster: true
             });
+            const inRecovery = pRow ? Boolean(pRow.in_recovery) : false;
             primaryData = {
                 status: 'healthy',
                 host: writeTarget.host,
                 port: writeTarget.port,
-                in_recovery: pRow ? pRow.in_recovery : false
+                in_recovery: inRecovery,
+                server_ip: pRow && pRow.server_ip ? String(pRow.server_ip) : null
             };
-            primaryHealthy = true;
         } catch (err) {
             primaryData = {
                 status: 'down',
                 host: writeTarget.host,
                 port: writeTarget.port,
-                error: err.message
+                error: err.message,
+                server_ip: null
             };
         }
         health.cluster.primary = primaryData;
@@ -94,13 +97,15 @@ app.get('/api/health', async (req, res) => {
             });
             try {
                 await client.connect();
-                const qRes = await client.query('SELECT pg_is_in_recovery() AS in_recovery;');
+                const qRes = await client.query('SELECT pg_is_in_recovery() AS in_recovery, inet_server_addr() AS server_ip;');
                 await client.end();
+                const row = qRes.rows[0];
                 return {
                     status: 'healthy',
                     host: rCfg.host,
                     port: rCfg.port,
-                    in_recovery: qRes.rows[0] ? qRes.rows[0].in_recovery : true
+                    in_recovery: row ? Boolean(row.in_recovery) : true,
+                    server_ip: row && row.server_ip ? String(row.server_ip) : null
                 };
             } catch (err) {
                 try { await client.end(); } catch (_) {}
@@ -108,7 +113,8 @@ app.get('/api/health', async (req, res) => {
                     status: 'down',
                     host: rCfg.host,
                     port: rCfg.port,
-                    error: err.message
+                    error: err.message,
+                    server_ip: null
                 };
             }
         }));
@@ -121,44 +127,12 @@ app.get('/api/health', async (req, res) => {
             error: 'No read replicas configured'
         };
 
-        // Calculo de Quorum del Cluster (Nodos totales = 1 Primario + M Replicas, Umbral = floor(N/2) + 1)
-        const totalNodes = 1 + replicaChecks.length;
-        const healthyPrimaryCount = primaryHealthy ? 1 : 0;
-        const healthyReplicasCount = replicaChecks.filter(r => r.status === 'healthy').length;
-        const totalHealthyNodes = healthyPrimaryCount + healthyReplicasCount;
-        const quorumThreshold = Math.floor(totalNodes / 2) + 1;
-        const quorumReached = totalHealthyNodes >= quorumThreshold;
+        // Evaluacion modular de Quorum y Estado Global (con deduplicacion de nodos)
+        const healthResult = calculateClusterHealth(primaryData, replicaChecks);
+        health.cluster.quorum = healthResult.quorum;
+        health.status = healthResult.status;
 
-        health.cluster.quorum = {
-            total_nodes: totalNodes,
-            healthy_nodes: totalHealthyNodes,
-            quorum_threshold: quorumThreshold,
-            quorum_reached: quorumReached
-        };
-
-        // Evaluacion del estado global
-        if (primaryHealthy && healthyReplicasCount === replicaChecks.length) {
-            health.status = 'healthy';
-            return res.status(200).json(health);
-        } else if (primaryHealthy && healthyReplicasCount > 0) {
-            // Alta disponibilidad activa: falla parcial tolerada con quorum cumplido
-            health.status = 'healthy_partial_replica';
-            return res.status(200).json(health);
-        } else if (primaryHealthy && healthyReplicasCount === 0) {
-            health.status = 'degraded_no_replica';
-            return res.status(200).json(health);
-        } else if (!primaryHealthy && healthyReplicasCount > 0) {
-            const promotedStandby = replicaChecks.find(r => r.status === 'healthy' && r.in_recovery === false);
-            if (promotedStandby) {
-                health.status = 'promoted_primary_no_standby';
-            } else {
-                health.status = 'degraded_read_only';
-            }
-            return res.status(200).json(health);
-        } else {
-            health.status = 'outage';
-            return res.status(503).json(health);
-        }
+        return res.status(healthResult.httpCode).json(health);
     } else {
         try {
             await sequelize.authenticate();
@@ -177,16 +151,21 @@ console.log("Access Token:", process.env.ACCESS_TOKEN);
 
 //setting
 app.set('port', process.env.PORT || 3000);
-// Sincronizar Base de Datos y arrancar el servidor
-// .sync() crea las tablas automáticamente en Postgres si aún no existen
-// force en false crea las tablas solo si no existe, no borra datos en cada inicio
-sequelize.sync({ force: false })
-    .then(() => {
-        console.log('Tablas de PostgreSQL sincronizadas');
-        app.listen(app.get('port'), () => {
-            console.log(`Server started on port`, app.get('port'));
+
+if (process.env.NODE_ENV !== 'test') {
+    // Sincronizar Base de Datos y arrancar el servidor
+    // .sync() crea las tablas automáticamente en Postgres si aún no existen
+    // force en false crea las tablas solo si no existe, no borra datos en cada inicio
+    sequelize.sync({ force: false })
+        .then(() => {
+            console.log('Tablas de PostgreSQL sincronizadas');
+            app.listen(app.get('port'), () => {
+                console.log(`Server started on port`, app.get('port'));
+            });
+        })
+        .catch(err => {
+            console.error('No se pudo iniciar el servidor debido a un error en la BD:', err);
         });
-    })
-    .catch(err => {
-        console.error('No se pudo iniciar el servidor debido a un error en la BD:', err);
-    });
+}
+
+module.exports = app;

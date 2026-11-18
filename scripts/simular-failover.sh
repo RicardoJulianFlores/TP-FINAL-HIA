@@ -15,6 +15,7 @@ cd "$(dirname "$0")/.."
 AUTO_RESTORE=false
 CLEAN_CANARIES=false
 PROMOTE_METHOD="sql"
+TARGET="db-replica"
 
 for arg in "$@"; do
   case "$arg" in
@@ -29,6 +30,12 @@ for arg in "$@"; do
       ;;
     --clean-canaries)
       CLEAN_CANARIES=true
+      ;;
+    --target=*)
+      TARGET="${arg#*=}"
+      ;;
+    --node=*)
+      TARGET="${arg#*=}"
       ;;
     *)
       ;;
@@ -122,7 +129,7 @@ READ_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://loca
 READ_TIME=$(curl -s -o /dev/null -w "%{time_total}" --max-time 5 http://localhost:3000/api/productos/destacados || echo "timeout")
 
 if [ "$READ_HTTP_CODE" = "200" ]; then
-  echo "✓ LECTURAS OPERATIVAS: HTTP $READ_HTTP_CODE en ${READ_TIME}s (Servidas por lumiere-db-replica)."
+  echo "✓ LECTURAS OPERATIVAS: HTTP $READ_HTTP_CODE en ${READ_TIME}s (Servidas por el pool de réplicas de lectura)."
 else
   echo "✗ ERROR EN LECTURAS: Código HTTP $READ_HTTP_CODE."
 fi
@@ -149,9 +156,9 @@ echo "JSON /api/health: $HEALTH_DEGRADED"
 
 echo ""
 echo "=== FASE 4: Procedimiento de Promoción de la Réplica (Failover) ==="
-echo "Ejecutando promoción asistida mediante ./scripts/promover-replica.sh --method=$PROMOTE_METHOD..."
+echo "Ejecutando promoción asistida mediante ./scripts/promover-replica.sh --method=$PROMOTE_METHOD --target=$TARGET..."
 T_PROM_START=$(date +%s%3N 2>/dev/null || echo 0)
-./scripts/promover-replica.sh --method="$PROMOTE_METHOD"
+./scripts/promover-replica.sh --method="$PROMOTE_METHOD" --target="$TARGET"
 T_PROM_END=$(date +%s%3N 2>/dev/null || echo 0)
 
 if [ "$T_PROM_START" -ne 0 ] && [ "$T_PROM_END" -ne 0 ]; then
@@ -189,12 +196,12 @@ echo "JSON /api/health: $HEALTH_RESTORED"
 
 echo ""
 echo "=== FASE 6: Verificación de Consistencia e Integridad de Datos (RPO en Promovido) ==="
-echo "Verificando persistencia del registro canario PRE-FALLO ($CANARY_PRE) y POST-FAILOVER ($CANARY_POST) en el nuevo primario..."
-FOUND_PRE=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" || echo 0)
-FOUND_POST=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
+echo "Verificando persistencia del registro canario PRE-FALLO ($CANARY_PRE) y POST-FAILOVER ($CANARY_POST) en el nuevo primario (lumiere-$TARGET)..."
+FOUND_PRE=$(docker compose exec -T "$TARGET" sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" || echo 0)
+FOUND_POST=$(docker compose exec -T "$TARGET" sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
 
 if [ "$FOUND_PRE" -ge 1 ] && [ "$FOUND_POST" -ge 1 ]; then
-  echo "✓ CONSISTENCIA TOTAL: Tanto el registro canario pre-caída ($FOUND_PRE) como el post-failover ($FOUND_POST) existen sin pérdidas en el nodo promovido."
+  echo "✓ CONSISTENCIA TOTAL: Tanto el registro canario pre-caída ($FOUND_PRE) como el post-failover ($FOUND_POST) existen sin pérdidas en el nodo promovido (lumiere-$TARGET)."
   RPO_RESULT="0 transacciones / 0 bytes (Consistencia Total - RPO = 0s)"
 else
   echo "✗ ADVERTENCIA EN CONSISTENCIA: Pre-fallo=$FOUND_PRE | Post-fallo=$FOUND_POST"
@@ -245,7 +252,7 @@ printf "%-35s : %s\n" "RPO (Recovery Point Objective)" "$RPO_RESULT"
 printf "%-35s : %s\n" "Consistencia en Failback/Restauración" "$RESTORE_CONSISTENCY"
 printf "%-35s : %s\n" "Disponibilidad de Lectura (Degradado)" "100% OPERATIVO (HTTP 200 en ${READ_TIME}s)"
 printf "%-35s : %s\n" "Comportamiento de Escritura (Caída)" "RECHAZO INMEDIATO (HTTP $WRITE_HTTP_CODE - Preserva Consistencia)"
-printf "%-35s : %s\n" "Nuevo Nodo Primario Activo" "lumiere-db-replica (pg_is_in_recovery=f)"
+printf "%-35s : %s\n" "Nuevo Nodo Primario Activo" "lumiere-$TARGET (pg_is_in_recovery=f)"
 printf "%-35s : %s\n" "Archivo de Evidencia Generado" "$REPORT_FILE"
 echo "======================================================================"
 
