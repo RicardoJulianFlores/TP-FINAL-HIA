@@ -8,6 +8,7 @@ PRIMARY_PORT="${DB_PRIMARY_PORT:-5432}"
 PRIMARY_USER="${POSTGRES_USER:-postgres}"
 REPLICA_USER="${DB_REPLICA_USER:-replicator}"
 REPLICA_PASS="${DB_REPLICA_PASSWORD:-replica_password}"
+REPLICA_SLOT="${DB_REPLICA_SLOT:-replica_slot}"
 
 echo "Waiting for primary database ($PRIMARY_HOST:$PRIMARY_PORT) to accept connections..."
 until pg_isready -h "$PRIMARY_HOST" -p "$PRIMARY_PORT" -U "$PRIMARY_USER"; do
@@ -33,7 +34,7 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
     -Fp \
     -Xs \
     -R \
-    --slot=replica_slot; do
+    --slot="$REPLICA_SLOT"; do
       COUNT=$((COUNT + 1))
       if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
         echo "ERROR: pg_basebackup failed after $MAX_RETRIES attempts."
@@ -51,4 +52,9 @@ else
 fi
 
 echo "Starting PostgreSQL in standby mode..."
-exec docker-entrypoint.sh postgres -c hot_standby=on
+exec docker-entrypoint.sh postgres \
+  -c hot_standby=on \
+  -c wal_level=replica \
+  -c max_wal_senders=10 \
+  -c max_replication_slots=10 \
+  -c wal_keep_size=128MB

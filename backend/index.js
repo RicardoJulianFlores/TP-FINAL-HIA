@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { Client } = require('pg');
 const sequelize = require('./config/database');
+const { calculateClusterHealth } = require('./config/cluster-health');
 
 const swaggerUi = require('swagger-ui-express'); //importamos la libreria, y esta genera una interfaz grafica
 const swaggerFile = require('./swagger_output.json');
@@ -24,74 +26,113 @@ app.use('/api/configuracion', require('./src/routes/configuracion.route'));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 app.get('/api/health', async (req, res) => {
+    const readPool = sequelize.readPoolConfigs || [];
+    const writeTarget = sequelize.writeConfig || {
+        host: process.env.DB_WRITE_HOST || 'db',
+        port: parseInt(process.env.DB_WRITE_PORT || '5432', 10)
+    };
+    const dbUser = process.env.DB_USER || 'postgres';
+    const dbPassword = process.env.DB_PASSWORD;
+    const dbName = process.env.DB_NAME || 'trabajoFinal';
+
+    const isReplicated = readPool.length > 0 || Boolean(process.env.DB_READ_HOST);
+
     const health = {
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
         cluster: {
-            topology: process.env.DB_READ_HOST ? 'replication' : 'standalone',
+            topology: isReplicated ? 'replication' : 'standalone',
         }
     };
 
-    if (process.env.DB_READ_HOST) {
-        let primaryHealthy = false;
-        let replicaHealthy = false;
+    if (isReplicated) {
+        let primaryData = {
+            status: 'unknown',
+            host: writeTarget.host,
+            port: writeTarget.port,
+            in_recovery: false,
+            server_ip: null
+        };
 
         try {
-            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
+            const [pRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery, inet_server_addr() AS server_ip;', {
                 type: sequelize.QueryTypes.SELECT,
                 useMaster: true
             });
-            health.cluster.primary = {
+            const inRecovery = pRow ? Boolean(pRow.in_recovery) : false;
+            primaryData = {
                 status: 'healthy',
-                host: process.env.DB_WRITE_HOST || 'db',
-                in_recovery: pRow ? pRow.in_recovery : false
+                host: writeTarget.host,
+                port: writeTarget.port,
+                in_recovery: inRecovery,
+                server_ip: pRow && pRow.server_ip ? String(pRow.server_ip) : null
             };
-            primaryHealthy = true;
         } catch (err) {
-            health.cluster.primary = {
+            primaryData = {
                 status: 'down',
-                host: process.env.DB_WRITE_HOST || 'db',
-                error: err.message
+                host: writeTarget.host,
+                port: writeTarget.port,
+                error: err.message,
+                server_ip: null
             };
         }
+        health.cluster.primary = primaryData;
 
-        try {
-            const [rRow] = await sequelize.query('SELECT pg_is_in_recovery() AS in_recovery;', {
-                type: sequelize.QueryTypes.SELECT,
-                useMaster: false
+        // Comprobar cada nodo de replica configurado
+        const targetsToCheck = readPool.length > 0 ? readPool : [{
+            host: process.env.DB_READ_HOST || 'db-replica',
+            port: parseInt(process.env.DB_READ_PORT || '5432', 10),
+            username: dbUser,
+            password: dbPassword
+        }];
+
+        const replicaChecks = await Promise.all(targetsToCheck.map(async (rCfg) => {
+            const client = new Client({
+                host: rCfg.host,
+                port: rCfg.port,
+                user: rCfg.username || dbUser,
+                password: rCfg.password || dbPassword,
+                database: dbName,
+                connectionTimeoutMillis: 2500
             });
-            health.cluster.replica = {
-                status: 'healthy',
-                host: process.env.DB_READ_HOST,
-                in_recovery: rRow ? rRow.in_recovery : true
-            };
-            replicaHealthy = true;
-        } catch (err) {
-            health.cluster.replica = {
-                status: 'down',
-                host: process.env.DB_READ_HOST,
-                error: err.message
-            };
-        }
-
-        if (primaryHealthy && replicaHealthy) {
-            if (health.cluster.replica.in_recovery === false) {
-                // Standby promovido a primario (failover completado sin standby secundario adjunto)
-                health.status = 'promoted_primary_no_standby';
-            } else {
-                health.status = 'healthy';
+            try {
+                await client.connect();
+                const qRes = await client.query('SELECT pg_is_in_recovery() AS in_recovery, inet_server_addr() AS server_ip;');
+                await client.end();
+                const row = qRes.rows[0];
+                return {
+                    status: 'healthy',
+                    host: rCfg.host,
+                    port: rCfg.port,
+                    in_recovery: row ? Boolean(row.in_recovery) : true,
+                    server_ip: row && row.server_ip ? String(row.server_ip) : null
+                };
+            } catch (err) {
+                try { await client.end(); } catch (_) {}
+                return {
+                    status: 'down',
+                    host: rCfg.host,
+                    port: rCfg.port,
+                    error: err.message,
+                    server_ip: null
+                };
             }
-            return res.status(200).json(health);
-        } else if (replicaHealthy && !primaryHealthy) {
-            health.status = 'degraded_read_only';
-            return res.status(200).json(health);
-        } else if (primaryHealthy && !replicaHealthy) {
-            health.status = 'degraded_no_replica';
-            return res.status(200).json(health);
-        } else {
-            health.status = 'outage';
-            return res.status(503).json(health);
-        }
+        }));
+
+        health.cluster.replicas = replicaChecks;
+        // Compatibilidad hacia atras con tests y scripts que consultan health.cluster.replica
+        health.cluster.replica = replicaChecks[0] || {
+            status: 'down',
+            host: process.env.DB_READ_HOST || 'db-replica',
+            error: 'No read replicas configured'
+        };
+
+        // Evaluacion modular de Quorum y Estado Global (con deduplicacion de nodos)
+        const healthResult = calculateClusterHealth(primaryData, replicaChecks);
+        health.cluster.quorum = healthResult.quorum;
+        health.status = healthResult.status;
+
+        return res.status(healthResult.httpCode).json(health);
     } else {
         try {
             await sequelize.authenticate();
@@ -108,6 +149,24 @@ app.get('/api/health', async (req, res) => {
 
 //setting
 app.set('port', process.env.PORT || 3000);
+
+if (process.env.NODE_ENV !== 'test') {
+    // Sincronizar Base de Datos y arrancar el servidor
+    // .sync() crea las tablas automáticamente en Postgres si aún no existen
+    // force en false crea las tablas solo si no existe, no borra datos en cada inicio
+    sequelize.sync({ force: false })
+        .then(() => {
+            console.log('Tablas de PostgreSQL sincronizadas');
+            app.listen(app.get('port'), () => {
+                console.log(`Server started on port`, app.get('port'));
+            });
+        })
+        .catch(err => {
+            console.error('No se pudo iniciar el servidor debido a un error en la BD:', err);
+        });
+}
+
+module.exports = app;
 // Sincronizar Base de Datos y arrancar el servidor
 // .sync() crea las tablas automáticamente en Postgres si aún no existen
 // force en false crea las tablas solo si no existe, no borra datos en cada inicio

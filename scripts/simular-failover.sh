@@ -15,6 +15,7 @@ cd "$(dirname "$0")/.."
 AUTO_RESTORE=false
 CLEAN_CANARIES=false
 PROMOTE_METHOD="sql"
+TARGET="db-replica"
 
 for arg in "$@"; do
   case "$arg" in
@@ -29,6 +30,12 @@ for arg in "$@"; do
       ;;
     --clean-canaries)
       CLEAN_CANARIES=true
+      ;;
+    --target=*)
+      TARGET="${arg#*=}"
+      ;;
+    --node=*)
+      TARGET="${arg#*=}"
       ;;
     *)
       ;;
@@ -47,30 +54,38 @@ echo "Fecha de inicio: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "Método de promoción configurado: $PROMOTE_METHOD"
 echo ""
 
-echo "=== FASE 1: Verificación de Pre-condiciones y Topología Base ==="
+echo "=== FASE 1: Verificación de Pre-condiciones y Topología Base (3 Nodos) ==="
 PRIMARY_REC=$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_is_in_recovery();"' 2>/dev/null || echo "error")
-REPLICA_REC=$(docker compose exec -T db-replica sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_is_in_recovery();"' 2>/dev/null || echo "error")
+REPLICA1_REC=$(docker compose exec -T db-replica sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_is_in_recovery();"' 2>/dev/null || echo "error")
+REPLICA2_REC=$(docker compose exec -T db-replica-2 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT pg_is_in_recovery();"' 2>/dev/null || echo "error")
 
-if [ "$PRIMARY_REC" != "f" ] || [ "$REPLICA_REC" != "t" ]; then
-  echo "ERROR: El clúster no se encuentra en estado base (Primario=f, Réplica=t)."
-  echo "Estado actual -> Primario: $PRIMARY_REC | Réplica: $REPLICA_REC"
+if [ "$PRIMARY_REC" != "f" ] || [ "$REPLICA1_REC" != "t" ] || [ "$REPLICA2_REC" != "t" ]; then
+  echo "ERROR: El clúster no se encuentra en estado base (Primario=f, Réplica1=t, Réplica2=t)."
+  echo "Estado actual -> Primario: $PRIMARY_REC | Réplica 1: $REPLICA1_REC | Réplica 2: $REPLICA2_REC"
   echo "Ejecute ./scripts/restaurar-cluster.sh antes de iniciar la prueba." >&2
   exit 1
 fi
-echo "✓ Roles confirmados: Primario (pg_is_in_recovery=f) | Réplica (pg_is_in_recovery=t)"
+echo "✓ Roles confirmados: Primario (pg_is_in_recovery=f) | Réplica 1 (pg_is_in_recovery=t) | Réplica 2 (pg_is_in_recovery=t)"
 
 # Medir LSN y Lag de replicación para RPO de línea base
 PRIMARY_LSN=$(docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COALESCE(pg_current_wal_lsn(), '\''0/0'\'');"')
-REPLICA_LSN=$(docker compose exec -T db-replica sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COALESCE(pg_last_wal_replay_lsn(), '\''0/0'\'');"')
+REPLICA1_LSN=$(docker compose exec -T db-replica sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COALESCE(pg_last_wal_replay_lsn(), '\''0/0'\'');"')
+REPLICA2_LSN=$(docker compose exec -T db-replica-2 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COALESCE(pg_last_wal_replay_lsn(), '\''0/0'\'');"')
 
-if [ "$PRIMARY_LSN" != "0/0" ] && [ "$REPLICA_LSN" != "0/0" ]; then
-  LAG_BYTES=$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT pg_wal_lsn_diff('$PRIMARY_LSN', '$REPLICA_LSN');\"" 2>/dev/null || echo 0)
+if [ "$PRIMARY_LSN" != "0/0" ] && [ "$REPLICA1_LSN" != "0/0" ]; then
+  LAG1_BYTES=$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT pg_wal_lsn_diff('$PRIMARY_LSN', '$REPLICA1_LSN');\"" 2>/dev/null || echo 0)
 else
-  LAG_BYTES=0
+  LAG1_BYTES=0
 fi
 
-echo "✓ WAL LSN Primario: $PRIMARY_LSN | WAL LSN Réplica: $REPLICA_LSN"
-echo "✓ Replication Lag de línea base: $LAG_BYTES bytes (RPO teórico: 0 segundos)"
+if [ "$PRIMARY_LSN" != "0/0" ] && [ "$REPLICA2_LSN" != "0/0" ]; then
+  LAG2_BYTES=$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT pg_wal_lsn_diff('$PRIMARY_LSN', '$REPLICA2_LSN');\"" 2>/dev/null || echo 0)
+else
+  LAG2_BYTES=0
+fi
+
+echo "✓ WAL LSN Primario: $PRIMARY_LSN | R1: $REPLICA1_LSN (Lag: $LAG1_BYTES B) | R2: $REPLICA2_LSN (Lag: $LAG2_BYTES B)"
+echo "✓ Replication Lag de línea base verificado (RPO teórico: 0 segundos)"
 
 # Insertar registro testigo pre-fallo en el primario
 TEST_RUN_ID=$(date +%s)
@@ -78,20 +93,22 @@ CANARY_PRE="CANARY_PRE_FAILOVER_${TEST_RUN_ID}"
 echo "Insertando registro canario pre-fallo en el Primario ($CANARY_PRE)..."
 docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"INSERT INTO contactos (nombre, email, mensaje, \\\"createdAt\\\", \\\"updatedAt\\\") VALUES ('$CANARY_PRE', 'canary@lumiere.com', 'Pre-failover consistency token', NOW(), NOW());\"" >/dev/null
 
-# Verificar sincronización en la réplica con polling defensivo
-CANARY_IN_REPLICA=0
+# Verificar sincronización en ambas réplicas con polling defensivo
+CANARY_IN_R1=0
+CANARY_IN_R2=0
 for i in $(seq 1 10); do
-  CANARY_IN_REPLICA=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" 2>/dev/null || echo 0)
-  if [ "$CANARY_IN_REPLICA" -ge 1 ]; then
+  CANARY_IN_R1=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" 2>/dev/null || echo 0)
+  CANARY_IN_R2=$(docker compose exec -T db-replica-2 sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" 2>/dev/null || echo 0)
+  if [ "$CANARY_IN_R1" -ge 1 ] && [ "$CANARY_IN_R2" -ge 1 ]; then
     break
   fi
   sleep 0.5
 done
 
-if [ "$CANARY_IN_REPLICA" -ge 1 ]; then
-  echo "✓ Registro canario sincronizado exitosamente en la Réplica antes de la caída."
+if [ "$CANARY_IN_R1" -ge 1 ] && [ "$CANARY_IN_R2" -ge 1 ]; then
+  echo "✓ Registro canario sincronizado exitosamente en ambas Réplicas antes de la caída."
 else
-  echo "ERROR: El registro canario no sincronizó a la réplica." >&2
+  echo "ERROR: El registro canario no sincronizó a todas las réplicas (R1=$CANARY_IN_R1, R2=$CANARY_IN_R2)." >&2
   exit 1
 fi
 
@@ -112,7 +129,7 @@ READ_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://loca
 READ_TIME=$(curl -s -o /dev/null -w "%{time_total}" --max-time 5 http://localhost:3000/api/productos/destacados || echo "timeout")
 
 if [ "$READ_HTTP_CODE" = "200" ]; then
-  echo "✓ LECTURAS OPERATIVAS: HTTP $READ_HTTP_CODE en ${READ_TIME}s (Servidas por lumiere-db-replica)."
+  echo "✓ LECTURAS OPERATIVAS: HTTP $READ_HTTP_CODE en ${READ_TIME}s (Servidas por el pool de réplicas de lectura)."
 else
   echo "✗ ERROR EN LECTURAS: Código HTTP $READ_HTTP_CODE."
 fi
@@ -139,9 +156,9 @@ echo "JSON /api/health: $HEALTH_DEGRADED"
 
 echo ""
 echo "=== FASE 4: Procedimiento de Promoción de la Réplica (Failover) ==="
-echo "Ejecutando promoción asistida mediante ./scripts/promover-replica.sh --method=$PROMOTE_METHOD..."
+echo "Ejecutando promoción asistida mediante ./scripts/promover-replica.sh --method=$PROMOTE_METHOD --target=$TARGET..."
 T_PROM_START=$(date +%s%3N 2>/dev/null || echo 0)
-./scripts/promover-replica.sh --method="$PROMOTE_METHOD"
+./scripts/promover-replica.sh --method="$PROMOTE_METHOD" --target="$TARGET"
 T_PROM_END=$(date +%s%3N 2>/dev/null || echo 0)
 
 if [ "$T_PROM_START" -ne 0 ] && [ "$T_PROM_END" -ne 0 ]; then
@@ -179,12 +196,12 @@ echo "JSON /api/health: $HEALTH_RESTORED"
 
 echo ""
 echo "=== FASE 6: Verificación de Consistencia e Integridad de Datos (RPO en Promovido) ==="
-echo "Verificando persistencia del registro canario PRE-FALLO ($CANARY_PRE) y POST-FAILOVER ($CANARY_POST) en el nuevo primario..."
-FOUND_PRE=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" || echo 0)
-FOUND_POST=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
+echo "Verificando persistencia del registro canario PRE-FALLO ($CANARY_PRE) y POST-FAILOVER ($CANARY_POST) en el nuevo primario (lumiere-$TARGET)..."
+FOUND_PRE=$(docker compose exec -T "$TARGET" sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" || echo 0)
+FOUND_POST=$(docker compose exec -T "$TARGET" sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
 
 if [ "$FOUND_PRE" -ge 1 ] && [ "$FOUND_POST" -ge 1 ]; then
-  echo "✓ CONSISTENCIA TOTAL: Tanto el registro canario pre-caída ($FOUND_PRE) como el post-failover ($FOUND_POST) existen sin pérdidas en el nodo promovido."
+  echo "✓ CONSISTENCIA TOTAL: Tanto el registro canario pre-caída ($FOUND_PRE) como el post-failover ($FOUND_POST) existen sin pérdidas en el nodo promovido (lumiere-$TARGET)."
   RPO_RESULT="0 transacciones / 0 bytes (Consistencia Total - RPO = 0s)"
 else
   echo "✗ ADVERTENCIA EN CONSISTENCIA: Pre-fallo=$FOUND_PRE | Post-fallo=$FOUND_POST"
@@ -197,19 +214,21 @@ if [ "$AUTO_RESTORE" = true ]; then
   echo "Ejecutando ./scripts/restaurar-cluster.sh para restablecer la topología base..."
   ./scripts/restaurar-cluster.sh
 
-  echo "Verificando supervivencia de transacciones post-failover en el primario restaurado (lumiere-db)..."
+  echo "Verificando supervivencia de transacciones post-failover en el primario restaurado y réplicas..."
   RESTORED_PRE_DB=$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_PRE';\"" || echo 0)
   RESTORED_POST_DB=$(docker compose exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
-  RESTORED_POST_REP=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
+  RESTORED_POST_REP1=$(docker compose exec -T db-replica sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
+  RESTORED_POST_REP2=$(docker compose exec -T db-replica-2 sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM contactos WHERE nombre = '$CANARY_POST';\"" || echo 0)
 
-  if [ "$RESTORED_PRE_DB" -ge 1 ] && [ "$RESTORED_POST_DB" -ge 1 ] && [ "$RESTORED_POST_REP" -ge 1 ]; then
-    echo "✓ CERO PÉRDIDA CONFIRMADA TRAS RESTAURACIÓN:"
+  if [ "$RESTORED_PRE_DB" -ge 1 ] && [ "$RESTORED_POST_DB" -ge 1 ] && [ "$RESTORED_POST_REP1" -ge 1 ] && [ "$RESTORED_POST_REP2" -ge 1 ]; then
+    echo "✓ CERO PÉRDIDA CONFIRMADA TRAS RESTAURACIÓN (3 NODOS):"
     echo "  - Token Pre-Fallo en lumiere-db: $RESTORED_PRE_DB"
     echo "  - Token Post-Failover en lumiere-db: $RESTORED_POST_DB"
-    echo "  - Token Post-Failover replicado a db-replica: $RESTORED_POST_REP"
-    RESTORE_CONSISTENCY="100% PRESERVADO (Zero Data Loss tras Failback)"
+    echo "  - Token Post-Failover replicado a db-replica: $RESTORED_POST_REP1"
+    echo "  - Token Post-Failover replicado a db-replica-2: $RESTORED_POST_REP2"
+    RESTORE_CONSISTENCY="100% PRESERVADO (Zero Data Loss tras Failback en 3 Nodos)"
   else
-    echo "✗ ERROR: Discrepancia detectada tras restauración: Pre(db)=$RESTORED_PRE_DB, Post(db)=$RESTORED_POST_DB, Post(replica)=$RESTORED_POST_REP"
+    echo "✗ ERROR: Discrepancia detectada tras restauración: Pre(db)=$RESTORED_PRE_DB, Post(db)=$RESTORED_POST_DB, Post(r1)=$RESTORED_POST_REP1, Post(r2)=$RESTORED_POST_REP2"
     RESTORE_CONSISTENCY="Discrepancia en Failback"
   fi
 
@@ -233,7 +252,7 @@ printf "%-35s : %s\n" "RPO (Recovery Point Objective)" "$RPO_RESULT"
 printf "%-35s : %s\n" "Consistencia en Failback/Restauración" "$RESTORE_CONSISTENCY"
 printf "%-35s : %s\n" "Disponibilidad de Lectura (Degradado)" "100% OPERATIVO (HTTP 200 en ${READ_TIME}s)"
 printf "%-35s : %s\n" "Comportamiento de Escritura (Caída)" "RECHAZO INMEDIATO (HTTP $WRITE_HTTP_CODE - Preserva Consistencia)"
-printf "%-35s : %s\n" "Nuevo Nodo Primario Activo" "lumiere-db-replica (pg_is_in_recovery=f)"
+printf "%-35s : %s\n" "Nuevo Nodo Primario Activo" "lumiere-$TARGET (pg_is_in_recovery=f)"
 printf "%-35s : %s\n" "Archivo de Evidencia Generado" "$REPORT_FILE"
 echo "======================================================================"
 
