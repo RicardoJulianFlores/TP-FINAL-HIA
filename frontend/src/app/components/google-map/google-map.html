@@ -1,0 +1,27 @@
+<div class="position-relative" [style.height]="altura">
+  <div *ngIf="cargando" class="d-flex align-items-center justify-content-center h-100 bg-light rounded">
+    <div class="text-center text-secondary">
+      <div class="spinner-border text-warning mb-2" role="status"></div>
+      <p class="mb-0 small">Cargando mapa...</p>
+    </div>
+  </div>
+
+  <div *ngIf="error" class="d-flex align-items-center justify-content-center h-100 bg-light rounded">
+    <div class="text-center text-secondary">
+      <i class="bi bi-map display-4"></i>
+      <p class="mt-2 small">No se pudo cargar el mapa.<br>Verificá tu conexión.</p>
+    </div>
+  </div>
+
+  <div #mapContainer [style.height]="altura" [class.d-none]="cargando || error" class="rounded-4 overflow-hidden shadow-sm"></div>
+
+  <div *ngIf="distanciaKm && duracionMin" class="position-absolute bottom-0 start-0 m-2 bg-white rounded-3 shadow-sm px-3 py-2 small">
+    <i class="bi bi-signpost-2 me-1"></i>
+    Estás a <strong>{{ distanciaKm }} km</strong> ({{ duracionMin }} min en auto aprox.)
+  </div>
+
+  <div *ngIf="permisoUbicacionDenegado" class="position-absolute bottom-0 start-0 m-2 bg-white rounded-3 shadow-sm px-3 py-2 small text-secondary">
+    <i class="bi bi-geo-alt me-1"></i>
+    Activá la ubicación en tu navegador para ver la ruta hasta acá
+  </div>
+</div>

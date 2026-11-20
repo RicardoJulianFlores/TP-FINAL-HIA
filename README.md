@@ -27,7 +27,7 @@ PostgreSQL 17 en red Docker interna, volumen nombrado, pgAdmin local y scripts d
 
 ```bash
 cp .env.example .env          # completar DB_PASSWORD y PGADMIN_PASSWORD
-docker compose up -d
+docker compose up -d --build  (levanta el proyecto buscando los dockerfile de las carpetas)
 docker compose ps             # db: healthy
 ```
 
@@ -60,8 +60,193 @@ pgAdmin: http://localhost:5050 → iniciar sesión con `PGADMIN_EMAIL` / `PGADMI
 
 Los `.sql` contienen datos reales (incluidos hashes de contraseñas): no los suba a git (ya están en `.gitignore`) y guarde una copia fuera de esta máquina.
 
+## Carga masiva (36.000.000 de registros: 6M por tabla)
+
+Guía completa: **[datos/README.md](datos/README.md)**.
+
+```bash
+docker compose up -d db db-replica pgadmin
+python datos/generar_datos.py                  # crea datos/csv (36M de filas, 3,7 GB)
+python datos/cargar_datos.py --sin-indices     # carga con COPY (sin índices analíticos, ~21 min)
+python datos/crear_dump.py                     # crea backups/lumiere-36m.dump (830 MB, ~4 min)
+```
+
+Los índices de consulta se crean después, cuando la carga ya terminó:
+
+```bash
+python datos/cargar_datos.py --solo-indices
+```
+
+Los compañeros solo necesitan el dump y ejecutar `RESTAURAR_DATOS.bat`
+(Windows) o `python datos/restaurar_dump.py` (Linux/macOS).
+
+> El antiguo `backups/backup-6m.dump` (21 KB) es un dump de esquema vacío y
+> **no** contiene los 6 millones de registros. Use el que genera
+> `datos/crear_dump.py`.
+
 ## Notas
 
 - `db/init/` solo se ejecuta cuando el volumen está vacío. Si cambia el esquema, aplíquelo con SQL sobre la base o recree el volumen (`docker compose down -v`, **borra todos los datos**).
 - `docker compose down` conserva los datos; `docker compose down -v` los destruye.
 - Si ya tiene datos en una base local, puede cargarlos con `./scripts/restore.sh` a partir de un `pg_dump --clean --if-exists --no-owner` de esa base.
+
+---
+
+## Módulo de Gestión Operativa y Mesa de Ayuda (GLPI - JOY-20)
+
+Para la gestión de incidentes ITIL, categorización operativa y conexión con n8n/Prometheus, consultar la documentación detallada en [glpi/README.md](glpi/README.md):
+
+```bash
+cd glpi
+./setup.sh
+```
+- Acceso Web: http://localhost:8086 (Credenciales para integrantes: `<usuario>` / `Lumiere2026!`).
+- API REST: http://localhost:8086/apirest.php (App-Token configurado para n8n).
+# Procedimiento Operativo Estándar: Rollback y Recuperación ante Fallos
+
+## 1. Detección del Incidente
+Un fallo en producción se considera crítico si:
+- Las pruebas de salud (Healthchecks) responden con códigos de estado HTTP 5xx.
+- Ocurren excepciones no controladas en los logs del servidor post-despliegue.
+
+## 2. Mecanismos de Reversión
+
+### Opción A: Rollback mediante Reversión en Git (Método Automatizado Preferido)
+1. Identificar el commit estable anterior en la rama `main`.
+2. Crear un commit de reversión local y enviarlo al repositorio:
+   git revert HEAD --no-edit
+   git push origin main
+3. GitHub Actions ejecutará automáticamente el pipeline completo, construyendo y desplegando la versión previa garantizada.
+
+### Opción B: Rollback Inmediato en Servidor por SHA (Método de Emergencia < 2 Minutos)
+Si la aplicación no responde y el pipeline tarda demasiado en compilar:
+1. Conectarse al servidor vía SSH.
+2. Identificar el SHA del commit estable anterior en el registro de contenedores (GHCR).
+3. Reemplazar el contenedor en producción ejecutando:
+   docker stop app-prod
+   docker rm app-prod
+   docker run -d --name app-prod -p 80:3000 --restart always ghcr.io/tu-usuario/tu-repo:<COMMIT_SHA_ANTERIOR>
+
+## 3. Post-Mortem y Análisis de Fallo
+1. Extraer los registros del contenedor fallido antes de su destrucción:
+   docker logs app-prod > error_logs_$(date +%F).log
+2. Analizar el log en búsqueda de dependencias faltantes, errores de migración de base de datos o fallos de variables de entorno.
+3. Incorporar una nueva prueba unitaria o de integración en el pipeline que replique la falla para prevenir su reaparición futura.
+
+
+---
+
+## Clúster de Base de Datos: Topología de 3 Nodos (Primario + 2 Réplicas)
+
+Se configuró una arquitectura de alta disponibilidad, tolerancia a fallos por quórum y segregación/balanceo de carga de lectura/escritura mediante **Streaming Replication** física nativa de PostgreSQL 17:
+- **Nodo Primario (`lumiere-db`):** Responsable exclusivo de las transacciones de escritura (`INSERT`, `UPDATE`, `DELETE`, DDL). Genera los registros WAL (*Write-Ahead Logging*) y los transmite mediante slots de replicación dedicados (`replica_slot` y `replica_slot_2`).
+- **Nodo Réplica 1 (`lumiere-db-replica`):** Servidor en modo *Hot Standby* de solo lectura. Clona el estado inicial del primario vía `pg_basebackup` y replica en streaming desde `replica_slot`.
+- **Nodo Réplica 2 (`lumiere-db-replica-2`):** Servidor secundario en modo *Hot Standby* de solo lectura. Clona el primario vía `pg_basebackup` y replica en streaming desde `replica_slot_2`. Garantiza quórum de mayoría (2 de 3 nodos) y alta disponibilidad continua ante la caída de cualquier nodo del clúster.
+- **Backend (Express + Sequelize):** Pool de conexiones de replicación con balanceo de carga (`replication: { write: ..., read: [replica1, replica2] }`). Las consultas de lectura se distribuyen equitativamente (*round-robin*) entre ambas réplicas, mientras que las transacciones de escritura van al primario.
+- **Quórum y Resiliencia:** El clúster opera con un umbral de consenso de mayoría estricto ($\lfloor N/2 \rfloor + 1 = 2$). Si una de las dos réplicas experimenta una falla, el sistema continúa procesando lecturas y escrituras sin degradación de servicio ni pérdida de quórum.
+- **Endpoint de Monitoreo:** `GET /api/health` reporta el estado detallado de salud, conectividad individual de cada nodo (`primary`, `replicas`), métricas de quórum (`total_nodes`, `healthy_nodes`, `quorum_threshold`, `quorum_reached`) y estado global.
+
+### Diagrama de Red y Topología del Clúster (3 Nodos)
+
+```mermaid
+flowchart TD
+    subgraph Host["Host Machine"]
+        Client["Navegador / Cliente API"]
+    end
+
+    subgraph AdminNet["Docker Network: admin-net (Bridge)"]
+        Frontend["Frontend: joyeria-frontend (Port 8080:80)"]
+        Backend["Backend API: joyeria-backend (Port 3000:3000)"]
+        PgAdmin["pgAdmin 4: lumiere-pgadmin (Port 127.0.0.1:5050:80)"]
+        Tunnel["Cloudflare Tunnel: joyeria-tunnel"]
+    end
+
+    subgraph DbNet["Docker Network: db-net (internal: true)"]
+        Primary["DB Primario: lumiere-db (5432/tcp) - ESCRITURA"]
+        Replica1["DB Réplica 1: lumiere-db-replica (5432/tcp) - LECTURA"]
+        Replica2["DB Réplica 2: lumiere-db-replica-2 (5432/tcp) - LECTURA"]
+        VolPrimary[("Volumen: lumiere_pgdata")]
+        VolReplica1[("Volumen: lumiere_pgdata_replica")]
+        VolReplica2[("Volumen: lumiere_pgdata_replica_2")]
+    end
+
+    Client -->|HTTP 8080| Frontend
+    Client -->|HTTP 3000| Backend
+    Client -->|HTTP 5050| PgAdmin
+
+    Frontend -->|HTTP /api| Backend
+    Tunnel --> Frontend
+
+    Backend -->|Sequelize Write / DDL: 5432| Primary
+    Backend -->|Sequelize Read Balanceado: 5432| Replica1
+    Backend -->|Sequelize Read Balanceado: 5432| Replica2
+
+    PgAdmin -->|Admin: 5432| Primary
+    PgAdmin -->|Admin: 5432| Replica1
+    PgAdmin -->|Admin: 5432| Replica2
+
+    Primary -.->|WAL Streaming / 5432 (Slot: replica_slot)| Replica1
+    Primary -.->|WAL Streaming / 5432 (Slot: replica_slot_2)| Replica2
+    Primary --- VolPrimary
+    Replica1 --- VolReplica1
+    Replica2 --- VolReplica2
+```
+
+### Matriz de Puertos y Servicios
+
+| Servicio | Contenedor | Redes | Puerto Interno | Puerto Host / Exposición | Rol |
+|---|---|---|---|---|---|
+| `db` | `lumiere-db` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Primario (Escritura y WAL streaming a 2 réplicas) |
+| `db-replica` | `lumiere-db-replica` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica 1 (Hot Standby - Solo Lectura / Quórum) |
+| `db-replica-2` | `lumiere-db-replica-2` | `db-net` | 5432/tcp | Aislado (sin acceso exterior) | Réplica 2 (Hot Standby - Solo Lectura / Quórum) |
+| `pgadmin` | `lumiere-pgadmin` | `db-net`, `admin-net` | 80/tcp | `127.0.0.1:5050` | Administrador visual de los 3 nodos del clúster |
+| `backend` | `joyeria-backend` | `db-net`, `admin-net` | 3000/tcp | `0.0.0.0:3000` | API REST con pool Sequelize de 3 nodos (1 Write + 2 Read) |
+| `frontend` | `joyeria-frontend` | `admin-net` | 80/tcp | `0.0.0.0:8080` | SPA Angular + Nginx |
+
+### Script de Verificación Automática de Replicación
+
+Para validar la sincronización automática, quórum de 3 nodos y restricción de solo lectura:
+```bash
+chmod +x scripts/verificar-replicacion.sh
+./scripts/verificar-replicacion.sh
+```
+El script comprueba:
+1. Roles `pg_is_in_recovery()` (`f` para primario, `t` para réplica 1 y réplica 2).
+2. Estado del canal WAL (`pg_stat_replication` con recuento esperado de 2 senders en streaming, y `pg_stat_wal_receiver` en ambas réplicas).
+3. Inserción de un registro en el primario y verificación de su sincronización automática en ambas réplicas.
+4. Rechazo de transacciones de escritura directa en ambas réplicas (`read-only transaction`).
+5. Validación de Quórum de mayoría ($\ge 2$ nodos activos sobre 3).
+
+---
+
+## Prueba de Fallo Controlado (Failover) y Alta Disponibilidad
+
+Se diseñó y validó una suite de prueba de fallo controlado para evaluar el comportamiento del sistema ante la caída inesperada del nodo primario (`lumiere-db`), midiendo los indicadores de resiliencia **RTO** (*Recovery Time Objective*) y **RPO** (*Recovery Point Objective*).
+
+### Resumen de Métricas de Resiliencia Obtenidas
+
+| Métrica | Objetivo de Diseño | Resultado Empírico | Comportamiento del Sistema |
+|---|---|---|---|
+| **RTO** (Tiempo de Recuperación) | $< 60$ s | **6 s a 26 s** | Restablecimiento total de escrituras sobre nuevo primario promovido |
+| **RPO** (Pérdida de Datos) | $0$ transacciones | **0 s (0 bytes)** | Cero pérdida de transacciones. Sincronía WAL completa |
+| **Persistencia tras Failback** | $100\%$ retención | **100% Preservado** | Transacciones post-failover sincronizadas sin pérdidas hacia el nodo original |
+| **Lecturas en Modo Degradado** | $100\%$ uptime | **HTTP 200 (0.004s)** | Despachadas sin interrupción por el nodo réplica |
+| **Escrituras durante la Caída** | Rechazo Atómico | **HTTP 400 (0.088s)** | Previene *split-brain* e incoherencias de datos |
+| **Promoción de Base de Datos** | $< 5$ s | **1.21 s a 3.96 s** | Promoción nativa con `SELECT pg_promote()` o `pg_ctl promote` |
+
+### Scripts Operativos de Failover y Restauración
+
+```bash
+# 1. Simulación Automatizada Completa de Fallo Controlado con auto-restauración y verificación de persistencia:
+./scripts/simular-failover.sh --restore
+
+# 2. Simulación utilizando el método alternativo de control pg_ctl:
+./scripts/simular-failover.sh --restore --method=pg_ctl
+
+# 3. Promoción asistida / semiautomática de la réplica a nuevo primario:
+./scripts/promover-replica.sh                 # Método SQL pg_promote()
+./scripts/promover-replica.sh --method=pg_ctl # Método de proceso pg_ctl
+
+# 4. Restauración de la topología base (lumiere-db primario y db-replica standby con preservación de datos):
+./scripts/restaurar-cluster.sh
+```

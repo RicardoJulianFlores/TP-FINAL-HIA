@@ -1,0 +1,8 @@
+.navbar-brand {
+  letter-spacing: 1px;
+}
+
+.nav-link.active {
+  font-weight: 600;
+  border-bottom: 2px solid #d4af37;
+}

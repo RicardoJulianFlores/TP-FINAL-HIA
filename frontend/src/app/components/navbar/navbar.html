@@ -1,0 +1,80 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
+  <div class="container">
+    <a class="navbar-brand fw-bold fs-4" routerLink="/">
+      <i class="bi bi-gem me-2"></i>Lumière
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu"
+      aria-controls="navbarMenu" aria-expanded="false" aria-label="Abrir menú">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarMenu">
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0 text-center">
+        <li class="nav-item">
+          <a class="nav-link" routerLink="/" routerLinkActive="active"
+            [routerLinkActiveOptions]="{exact: true}">Inicio</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" routerLink="/catalogo" routerLinkActive="active">Catálogo</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" routerLink="/nosotros" routerLinkActive="active">Nosotros</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" routerLink="/contacto" routerLinkActive="active">Contacto</a>
+        </li>
+        <li class="nav-item" *ngIf="loginApi.getPerfil()==='Empleado'">
+          <a class="nav-link" routerLink="/pedidos" routerLinkActive="active">Pedidos</a>
+        </li>
+        <li class="nav-item" *ngIf="loginApi.getPerfil()==='Empleado'">
+          <a class="nav-link" routerLink="/pagos" routerLinkActive="active">Pagos</a>
+        </li>
+        <li class="nav-item" *ngIf="loginApi.getPerfil()==='Empleado'">
+          <a class="nav-link" routerLink="/estadisticas" routerLinkActive="active">Dashboard</a>
+        </li>
+        <span *ngIf="loginApi.getPerfil()==='Empleado'">
+          <li class="nav-item">
+            <a class="nav-link" routerLink="/stock" routerLinkActive="active">Stock</a>
+          </li>
+        </span>
+        <span *ngIf="!loginApi.userLoggedIn()">
+          <li class="nav-item">
+            <a class="btn btn-outline-light" routerLink="/login" routerLinkActive="active">Iniciar Sesión</a>
+          </li>
+        </span>
+        <span *ngIf="loginApi.userLoggedIn()">
+          <li class="nav-item dropdown">
+            <button class="btn btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown"
+              aria-expanded="false">
+              <i class="bi bi-person"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+              <li>
+                <span class="dropdown-item">Usuario: {{ loginApi.userLogged() }}</span>
+              </li>
+              <li>
+                <span class="dropdown-item">Perfil: {{ loginApi.getPerfil() }}</span>
+              </li>
+              <li>
+                <hr class="dropdown-divider">
+              </li>
+              <li>
+                <a class="dropdown-item" routerLink="/login" routerLinkActive="active" (click)="logout()">
+                  Cerrar Sesión
+                </a>
+              </li>
+            </ul>
+          </li>
+        </span>
+        <li class="nav-item ms-lg-3 mt-2 mt-lg-0">
+          <a class="btn btn-outline-light position-relative" routerLink="/carrito">
+            <i class="bi bi-cart3"></i>
+            <span *ngIf="cantidadCarrito > 0"
+              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning text-dark">
+              {{ cantidadCarrito }}
+            </span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

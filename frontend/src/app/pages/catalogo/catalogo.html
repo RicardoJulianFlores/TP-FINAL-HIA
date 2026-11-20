@@ -1,0 +1,19 @@
+<section class="container py-5">
+  <h1 class="text-center fw-bold mb-2">Catálogo</h1>
+  <p class="text-center text-secondary mb-5">Elegí una categoría para ver todas las piezas disponibles</p>
+
+  <div class="row g-4">
+    <div class="col-12 col-sm-6 col-lg-3" *ngFor="let categoria of categorias">
+      <a [routerLink]="['/catalogo', categoria.slug]" class="text-decoration-none">
+        <div class="card border-0 shadow-sm categoria-card">
+          <img [src]="categoria.imagen" [alt]="categoria.nombre" class="card-img-top categoria-img">
+          <div class="card-img-overlay d-flex flex-column justify-content-end">
+            <h4 class="text-white fw-bold mb-0">
+              <i class="bi {{ categoria.icono }} me-2"></i>{{ categoria.nombre }}
+            </h4>
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>

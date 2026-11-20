@@ -1,9 +1,27 @@
 {
   "Servers": {
     "1": {
-      "Name": "Lumiere (contenedor db)",
-      "Group": "Servers",
+      "Name": "Lumiere Primario (Escritura)",
+      "Group": "Cluster DB",
       "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "Lumiere Réplica 1 (Lectura)",
+      "Group": "Cluster DB",
+      "Host": "db-replica",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    },
+    "3": {
+      "Name": "Lumiere Réplica 2 (Lectura)",
+      "Group": "Cluster DB",
+      "Host": "db-replica-2",
       "Port": 5432,
       "MaintenanceDB": "postgres",
       "Username": "postgres",

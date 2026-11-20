@@ -1,0 +1,45 @@
+<div class="container py-5">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-0">Gestión de Pagos</h2>
+      <small class="text-muted">Consulta el historial de pagos registrados por los clientes.</small>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Lista de pagos</h5>
+      <span class="badge bg-warning text-dark">{{ pagos.length }} pagos</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">ID</th>
+            <th scope="col">Estado del pago</th>
+            <th scope="col">Fecha y Hora</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of pagos">
+            <th scope="row">{{ p.mp_payment_id }}</th>
+            <td>
+              <span class="badge" [ngClass]="{
+                'bg-success': p.estado_pago === 'approved' || p.estado_pago === 'APROBADO',
+                'bg-warning text-dark': p.estado_pago === 'pending' || p.estado_pago === 'PENDIENTE',
+                'bg-danger': p.estado_pago === 'rejected' || p.estado_pago === 'RECHAZADO'
+              }">
+                {{ p.estado_pago }}
+              </span>
+            </td>
+            <td>
+              <div class="fw-semibold">{{ p.fecha_pago | date:'dd/MM/yyyy' }}</div>
+              <small class="text-muted">{{ p.fecha_pago | date:'HH:mm' }}</small>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

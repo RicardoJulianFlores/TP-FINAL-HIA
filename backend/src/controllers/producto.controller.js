@@ -1,0 +1,186 @@
+const { Op } = require('sequelize');
+const Producto = require('../models/producto.model');
+const productoCtrl = {};
+
+// Recuperar todos
+productoCtrl.getProductos = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Obtener todos los productos'
+    */
+    try {
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 20, 1), 100);
+        const q = (req.query.q || '').trim();
+        const where = q ? { nombre: { [Op.iLike]: `%${q}%` } } : {};
+
+        const { rows, count } = await Producto.findAndCountAll({
+            where,
+            limit,
+            offset: (page - 1) * limit,
+            order: [['id', 'ASC']]
+        });
+
+        res.json({ data: rows, total: count, page, limit });
+    } catch (error) {
+        res.status(500).json({ status: '0', msg: 'Error al obtener los Productos.' });
+    }
+};
+
+//get Productos destacados
+productoCtrl.getDestacados = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Obtener productos destacados'
+    */
+    try {
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 12, 1), 50);
+
+        const productos = await Producto.findAll({
+            where: {
+                destacado: true,
+                stock: { [Op.gt]: 0 }
+            },
+            order: [['id', 'ASC']],
+            limit
+        });
+
+        res.json(productos);
+    } catch (error) {
+        res.status(500).json({ status: '0', msg: 'Error al obtener los Productos.' });
+    }
+};
+
+//get por categoria
+productoCtrl.getProductosPorCategoria = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Obtener productos por categoría'
+    #swagger.parameters['categoria'] = {
+        in: 'path',
+        required: true,
+        type: 'string'
+    }
+    */
+    try {
+        const page = Math.max(parseInt(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 12, 1), 60);
+
+        const where = { categoria: req.params.categoria };
+        if (req.query.conStock === 'true') {
+            where.stock = { [Op.gt]: 0 };
+        }
+
+        const { rows, count } = await Producto.findAndCountAll({
+            where,
+            order: [['id', 'ASC']],
+            limit,
+            offset: (page - 1) * limit
+        });
+
+        res.json({ data: rows, total: count, page, limit });
+    } catch (error) {
+        res.status(500).json({ status: '0', msg: 'Error al obtener los Productos.' });
+    }
+};
+
+// getProductoPorId
+productoCtrl.getProductoPorId = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Obtener producto por ID'
+    #swagger.parameters['id'] = {
+        in: 'path',
+        required: true,
+        type: 'integer'
+    }
+    */
+    try {
+        const productos = await Producto.findOne({
+            where: {
+                id: req.params.id
+            }
+        });
+
+        res.json(productos);
+    } catch (error) {
+        res.status(500).json({ status: '0', msg: 'Error al obtener los Productos.' });
+    }
+};
+
+//CREAR
+productoCtrl.crearProducto = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Crear un producto'
+    #swagger.parameters['body'] = {
+        in: 'body',
+        required: true,
+        schema: { $ref: '#/definitions/Producto' }
+    }
+    */
+    try {
+        await Producto.create(req.body);
+
+        res.json({ status: '1', msg: 'producto Guardado.' });
+    } catch (error) {
+        res.status(500).json({ status: '0', msg: 'Error al agregar.' });
+    }
+};
+
+//MODIFICAR
+productoCtrl.modificarProducto = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Modificar un Producto'
+    #swagger.parameters['id'] = {
+        in: 'path',
+        required: true,
+        type: 'integer'
+    }
+    #swagger.parameters['body'] = {
+        in: 'body',
+        required: true,
+        schema: { $ref: '#/definitions/Producto' }
+    }
+    */
+    const data = req.body;
+    try {
+        const producto = await Producto.findByPk(req.params.id);
+        if (producto) {
+            await producto.update(data);
+            res.status(200).json({ status: '1', msg: 'Producto actualizado' });
+        } else {
+            res.status(404).json({ status: '0', msg: 'Producto no encontrado' });
+        }
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Error al actualiza Producto', error: error.message });
+    }
+}
+
+//DELETE
+productoCtrl.deleteProducto = async (req, res) => {
+    /*
+    #swagger.tags = ['Producto']
+    #swagger.summary = 'Eliminar un Producto'
+    #swagger.parameters['id'] = {
+        in: 'path',
+        required: true,
+        type: 'integer'
+    }
+    */
+    try {
+        // .destroy() elimina el registro que coincida con el ID enviado por parámetro
+        await Producto.destroy({
+            where: { id: req.params.id }
+        });
+        res.json({ status: '1', msg: 'Producto removed' });
+    } catch (error) {
+        res.status(400).json({ status: '0', msg: 'Error procesando la operacion' });
+    }
+};
+
+
+
+module.exports = productoCtrl;

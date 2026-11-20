@@ -1,0 +1,14 @@
+.card-header {
+  border-bottom: 1px solid #e9ecef;
+}
+
+.badge {
+  font-size: 0.8rem;
+  padding: 0.45em 0.7em;
+}
+
+.table thead th {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

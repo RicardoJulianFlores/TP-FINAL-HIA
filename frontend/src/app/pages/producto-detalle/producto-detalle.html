@@ -1,0 +1,79 @@
+<section class="container py-5">
+  <div *ngIf="cargando" class="text-center py-5">
+    <div class="spinner-border text-warning" role="status">
+      <span class="visually-hidden">Cargando...</span>
+    </div>
+  </div>
+
+  <div *ngIf="!cargando && noEncontrado" class="text-center py-5">
+    <h3>Producto no encontrado</h3>
+    <a routerLink="/catalogo" class="btn btn-dark mt-3">Volver al catálogo</a>
+  </div>
+
+  <div *ngIf="!cargando && producto">
+    <nav aria-label="breadcrumb" class="mb-4">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a routerLink="/catalogo">Catálogo</a></li>
+        <li class="breadcrumb-item">
+          <a [routerLink]="['/catalogo', producto.categoria]">{{ producto.categoria | titlecase }}</a>
+        </li>
+        <li class="breadcrumb-item active">{{ producto.nombre }}</li>
+      </ol>
+    </nav>
+
+    <div class="row g-5 align-items-start">
+      <div class="col-md-6">
+        <img [src]="producto.imagen" [alt]="producto.nombre" class="img-fluid rounded-4 shadow">
+      </div>
+      <div class="col-md-6">
+        <span class="badge bg-light text-dark border mb-2">{{ producto.material }}</span>
+        <h1 class="fw-bold">{{ producto.nombre }}</h1>
+        <p class="text-secondary">{{ producto.descripcion }}</p>
+
+        <div class="my-4">
+          <span *ngIf="producto.descuento" class="text-decoration-line-through text-secondary me-2 fs-5">
+            {{ producto.precio | precioDescuento }}
+          </span>
+          <span class="fw-bold fs-2 text-dark">
+            {{ producto.precio | precioDescuento:(producto.descuento || 0) }}
+          </span>
+          <span *ngIf="producto.descuento" class="badge bg-danger ms-2">-{{ producto.descuento }}%</span>
+        </div>
+
+        <p *ngIf="producto.stock > 0" class="text-success fw-semibold">
+          <i class="bi bi-check-circle me-1"></i>{{producto.stock}} disponibles en stock
+        </p>
+        <p *ngIf="producto.stock == 0" class="text-danger fw-semibold">
+          <i class="bi bi-x-circle me-1"></i>Sin stock por el momento
+        </p>
+
+        <div *ngIf="producto.stock">
+          <label class="form-label fw-semibold">Cantidad</label>
+          <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="input-group cantidad-selector">
+              <button class="btn btn-outline-dark" type="button" (click)="disminuirCantidad()">−</button>
+              <span class="form-control text-center fw-bold">{{ cantidad }}</span>
+              <button class="btn btn-outline-dark" type="button" (click)="aumentarCantidad()">+</button>
+            </div>
+          </div>
+          <div class="d-flex flex-column gap-2">
+            <span *ngIf="faltaStock" class="text-danger">
+              <i class="bi bi-x-circle me-1"></i>No se puede agregar mas ya que no hay mas stock
+            </span>
+            <button class="btn btn-dark btn-lg" (click)="agregarAlCarrito()" [disabled]="agregado">
+              <span *ngIf="!agregado"><i class="bi bi-cart-plus me-2"></i>Agregar al carrito</span>
+              <span *ngIf="agregado"><i class="bi bi-check-circle me-2"></i>¡Agregado!</span>
+            </button>
+            <button class="btn btn-warning btn-lg fw-semibold" (click)="agregarAlCarrito(); irAlCarrito()">
+              <i class="bi bi-lightning-fill me-2"></i>Comprar ahora
+            </button>
+          </div>
+        </div>
+
+        <a routerLink="/catalogo" class="btn btn-link text-secondary mt-3 ps-0">
+          ← Seguir comprando
+        </a>
+      </div>
+    </div>
+  </div>
+</section>

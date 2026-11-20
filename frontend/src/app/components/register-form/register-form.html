@@ -1,0 +1,102 @@
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h2 class="text-center">
+                <i class="bi bi-gem me-2"></i>Crear Cuenta
+            </h2>
+        </div>
+        <form name="form" class="login-form" #registerForm="ngForm" (ngSubmit)="register()">
+            <div class="form-group mb-4">
+                <label for="username" class="form-label fw-bold">
+                    <i class="bi bi-person me-2"></i>Usuario
+                </label>
+                <input type="text" class="form-control" id="username" name="username"
+                    [(ngModel)]="userform.username" placeholder="Ingrese su usuario" required minlength="4"
+                    #usernameField="ngModel" />
+                <div *ngIf="usernameField.invalid && usernameField.touched" class="text-danger small mt-1">
+                    El usuario debe tener al menos 4 caracteres.
+                </div>
+            </div>
+            <div class="form-group mb-4">
+            <label for="email" class="form-label fw-bold">
+                <i class="bi bi-envelope me-2"></i>Email
+            </label>
+            <input type="email" class="form-control" id="email" name="email"
+                [(ngModel)]="userform.email" placeholder="Ingrese su email" required
+                email #emailField="ngModel" />
+            <div *ngIf="emailField.invalid && emailField.touched" class="text-danger small mt-1">
+                <span *ngIf="emailField.errors?.['required']">El email es obligatorio.</span>
+                <span *ngIf="emailField.errors?.['email']">Ingrese un email válido.</span>
+            </div>
+        </div>
+            <div class="form-group mb-4">
+                <label for="nombres" class="form-label fw-bold">
+                    <i class="bi bi-person me-2"></i>Nombre
+                </label>
+                <input type="text" class="form-control" id="nombres" name="nombres"
+                    [(ngModel)]="userform.nombres" placeholder="Ingrese su nombre" required minlength="3"
+                    #nombresField="ngModel" />
+                <div *ngIf="nombresField.invalid && nombresField.touched" class="text-danger small mt-1">
+                    Su nombre debe tener al menos 3 caracteres.
+                </div>
+            </div>
+
+            <div class="form-group mb-4">
+                <label for="apellido" class="form-label fw-bold">
+                    <i class="bi bi-person me-2"></i>Apellido
+                </label>
+                <input type="text" class="form-control" id="apellido" name="apellido"
+                    [(ngModel)]="userform.apellido" placeholder="Ingrese su apellido" required minlength="3"
+                    #apellidoField="ngModel" />
+                <div *ngIf="apellidoField.invalid && apellidoField.touched" class="text-danger small mt-1">
+                    Su apellido debe tener al menos 3 caracteres.
+                </div>
+            </div>
+
+            <div class="form-group mb-4">
+                <label for="password" class="form-label fw-bold">
+                    <i class="bi bi-lock me-2"></i>Contraseña
+                </label>
+                <input type="password" class="form-control" id="password" name="password"
+                    [(ngModel)]="userform.password" placeholder="Ingrese su contraseña" required [minlength]="configuracion.longitudMinima"
+                    #passwordField="ngModel" />
+                <div *ngIf="passwordField.invalid && passwordField.touched" class="text-danger small mt-1">
+                    La contraseña debe tener al menos {{ configuracion.longitudMinima }} caracteres.
+                </div>
+            </div>
+
+            <div class="form-group mb-4">
+                <label for="confirmPassword" class="form-label fw-bold">
+                    <i class="bi bi-lock-fill me-2"></i>Confirmar contraseña
+                </label>
+                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword"
+                    [(ngModel)]="confirmPassword" placeholder="Repita su contraseña" required
+                    #confirmPasswordField="ngModel" />
+                <div *ngIf="confirmPasswordField.touched && confirmPassword !== userform.password"
+                    class="text-danger small mt-1">
+                    Las contraseñas no coinciden.
+                </div>
+            </div>
+
+            <div *ngIf="msgregister" class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
+                <i class="bi bi-exclamation-circle me-2"></i>
+                <strong>Error:</strong> {{ msgregister }}
+                <button type="button" class="btn-close" (click)="msgregister = ''" aria-label="Close"></button>
+            </div>
+
+            <div *ngIf="successMsg" class="alert alert-success alert-dismissible fade show mb-4" role="alert">
+                <i class="bi bi-check-circle me-2"></i>
+                {{ successMsg }}
+                <button type="button" class="btn-close" (click)="successMsg = ''" aria-label="Close"></button>
+            </div>
+
+            <button type="submit" class="btn btn-login w-100 fw-bold py-2 mb-3"
+                [disabled]="registerForm.invalid || confirmPassword !== userform.password">
+                <i class="bi bi-person-plus me-2"></i>Registrarme
+            </button>
+        </form>
+        <div class="login-footer text-center text-secondary small">
+            <p>¿Ya tienes cuenta? <a routerLink="/login" class="text-decoration-none">Inicia sesión aquí</a></p>
+        </div>
+    </div>
+</div>

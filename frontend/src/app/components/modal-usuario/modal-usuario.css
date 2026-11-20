@@ -1,0 +1,19 @@
+.modal-content{
+    border-radius:18px;
+}
+.modal-header{
+    border-bottom:none;
+}
+.modal-footer{
+    border-top:none;
+}
+
+.btn-warning{
+    background:#d4af37;
+    color:white;
+    border:none;
+}
+
+.btn-warning:hover{
+    background:#b8942f;
+}
